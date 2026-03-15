@@ -117,6 +117,10 @@ function scanTs(filePath: string, site: string): ManifestEntry {
     const stratMatch = src.match(/strategy\s*:\s*Strategy\.(\w+)/);
     if (stratMatch) entry.strategy = stratMatch[1].toLowerCase();
 
+    // Extract browser: false (some adapters bypass browser entirely)
+    const browserMatch = src.match(/browser\s*:\s*(true|false)/);
+    if (browserMatch) entry.browser = browserMatch[1] === 'true';
+
     // Extract columns
     const colMatch = src.match(/columns\s*:\s*\[([^\]]*)\]/);
     if (colMatch) {

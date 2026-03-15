@@ -134,6 +134,7 @@ opencli ctrip search --query "三亚"      # 搜索目的地
 ```bash
 opencli list                # List all commands
 opencli list --json         # JSON output
+opencli list -f yaml        # YAML output
 opencli validate            # Validate all CLI definitions
 opencli validate bilibili   # Validate specific site
 ```
@@ -162,11 +163,14 @@ opencli verify <site/name> --smoke
 
 ## Output Formats
 
-All commands support `--format` / `-f`:
+All built-in commands support `--format` / `-f` with `table`, `json`, `yaml`, `md`, and `csv`.
+The `list` command supports the same formats and also keeps `--json` as a compatibility alias.
 
 ```bash
+opencli list -f yaml            # YAML command registry
 opencli bilibili hot -f table   # Default: rich table
 opencli bilibili hot -f json    # JSON (pipe to jq, feed to AI agent)
+opencli bilibili hot -f yaml    # YAML (readable structured output)
 opencli bilibili hot -f md      # Markdown
 opencli bilibili hot -f csv     # CSV
 ```

@@ -31,11 +31,29 @@ program.name('opencli').description('Make any website your CLI. Zero setup. AI-p
 
 // ── Built-in commands ──────────────────────────────────────────────────────
 
-program.command('list').description('List all available CLI commands').option('--json', 'JSON output')
+program.command('list').description('List all available CLI commands').option('-f, --format <fmt>', 'Output format: table, json, yaml, md, csv', 'table').option('--json', 'JSON output (deprecated)')
   .action((opts) => {
     const registry = getRegistry();
     const commands = [...registry.values()].sort((a, b) => fullName(a).localeCompare(fullName(b)));
-    if (opts.json) { console.log(JSON.stringify(commands.map(c => ({ command: fullName(c), site: c.site, name: c.name, description: c.description, strategy: strategyLabel(c), browser: c.browser, args: c.args.map(a => a.name) })), null, 2)); return; }
+    const rows = commands.map(c => ({
+      command: fullName(c),
+      site: c.site,
+      name: c.name,
+      description: c.description,
+      strategy: strategyLabel(c),
+      browser: c.browser,
+      args: c.args.map(a => a.name).join(', '),
+    }));
+    const fmt = opts.json && opts.format === 'table' ? 'json' : opts.format;
+    if (fmt !== 'table') {
+      renderOutput(rows, {
+        fmt,
+        columns: ['command', 'site', 'name', 'description', 'strategy', 'browser', 'args'],
+        title: 'opencli/list',
+        source: 'opencli list',
+      });
+      return;
+    }
     const sites = new Map<string, CliCommand[]>();
     for (const cmd of commands) { const g = sites.get(cmd.site) ?? []; g.push(cmd); sites.set(cmd.site, g); }
     console.log(); console.log(chalk.bold('  opencli') + chalk.dim(' — available commands')); console.log();
@@ -89,7 +107,7 @@ for (const [, cmd] of registry) {
     else if (arg.default != null) subCmd.option(flag, arg.help ?? '', String(arg.default));
     else subCmd.option(flag, arg.help ?? '');
   }
-  subCmd.option('-f, --format <fmt>', 'Output format: table, json, md, csv', 'table').option('-v, --verbose', 'Debug output', false);
+  subCmd.option('-f, --format <fmt>', 'Output format: table, json, yaml, md, csv', 'table').option('-v, --verbose', 'Debug output', false);
 
   subCmd.action(async (actionOpts) => {
     const startTime = Date.now();

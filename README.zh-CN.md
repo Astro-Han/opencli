@@ -94,9 +94,11 @@ npm install -g @jackwener/opencli
 
 ```bash
 opencli list                              # 查看所有命令
+opencli list -f yaml                      # 以 YAML 列出所有命令
 opencli hackernews top --limit 5          # 公共 API，无需浏览器
 opencli bilibili hot --limit 5            # 浏览器命令
 opencli zhihu hot -f json                 # JSON 输出
+opencli zhihu hot -f yaml                 # YAML 输出
 ```
 
 ### 从源码安装（面向开发者）
@@ -140,11 +142,14 @@ npm install -g @jackwener/opencli@latest
 
 ## 输出格式
 
-所有的命令都支持这些结果格式控制参数：
+所有内置命令都支持 `--format` / `-f`，可选值为 `table`、`json`、`yaml`、`md`、`csv`。
+`list` 命令也支持同样的格式参数，同时继续兼容 `--json`。
 
 ```bash
+opencli list -f yaml            # 用 YAML 列出命令注册表
 opencli bilibili hot -f table   # 默认：富文本表格
 opencli bilibili hot -f json    # JSON（适合传给 jq 或者各类 AI Agent）
+opencli bilibili hot -f yaml    # YAML（更适合人类直接阅读）
 opencli bilibili hot -f md      # Markdown
 opencli bilibili hot -f csv     # CSV
 opencli bilibili hot -v         # 详细模式：展示管线执行步骤调试信息

@@ -94,9 +94,11 @@ Then use directly:
 
 ```bash
 opencli list                              # See all commands
+opencli list -f yaml                      # List commands as YAML
 opencli hackernews top --limit 5          # Public API, no browser
 opencli bilibili hot --limit 5            # Browser command
 opencli zhihu hot -f json                 # JSON output
+opencli zhihu hot -f yaml                 # YAML output
 ```
 
 ### Install from source (for developers)
@@ -140,11 +142,14 @@ npm install -g @jackwener/opencli@latest
 
 ## Output Formats
 
-Commands support various format outputs:
+All built-in commands support `--format` / `-f` with `table`, `json`, `yaml`, `md`, and `csv`.
+The `list` command supports the same format options, and keeps `--json` for backward compatibility.
 
 ```bash
+opencli list -f yaml            # Command registry as YAML
 opencli bilibili hot -f table   # Default: rich terminal table
 opencli bilibili hot -f json    # JSON (pipe to jq or LLMs)
+opencli bilibili hot -f yaml    # YAML (human-readable structured output)
 opencli bilibili hot -f md      # Markdown
 opencli bilibili hot -f csv     # CSV
 opencli bilibili hot -v         # Verbose: show pipeline debug steps
