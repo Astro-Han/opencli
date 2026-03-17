@@ -70,30 +70,51 @@ function ensureDir(dir) {
 }
 
 /**
- * Ensure fpath contains the custom completions directory in .zshrc
+ * Ensure fpath contains the custom completions directory in .zshrc.
+ *
+ * Key detail: the fpath line MUST appear BEFORE the first `compinit` call,
+ * otherwise compinit won't scan our completions directory.  This is critical
+ * for oh-my-zsh users (source $ZSH/oh-my-zsh.sh calls compinit internally).
  */
 function ensureZshFpath(completionsDir, zshrcPath) {
   const fpathLine = `fpath=(${completionsDir} $fpath)`;
   const autoloadLine = `autoload -Uz compinit && compinit`;
+  const marker = '# opencli completion';
 
   if (!existsSync(zshrcPath)) {
-    writeFileSync(zshrcPath, `${fpathLine}\n${autoloadLine}\n`, 'utf8');
+    writeFileSync(zshrcPath, `${marker}\n${fpathLine}\n${autoloadLine}\n`, 'utf8');
     return;
   }
 
   const content = readFileSync(zshrcPath, 'utf8');
 
-  // Check if completions dir is already in fpath
+  // Already configured — nothing to do
   if (content.includes(completionsDir)) {
-    return; // already configured
+    return;
   }
 
-  // Append fpath configuration
-  let addition = `\n# opencli completion\n${fpathLine}\n`;
-  if (!content.includes('compinit')) {
-    addition += `${autoloadLine}\n`;
+  // Find the first line that triggers compinit (direct call or oh-my-zsh source)
+  const lines = content.split('\n');
+  let insertIdx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    // Skip comment-only lines
+    if (trimmed.startsWith('#')) continue;
+    if (/compinit/.test(trimmed) || /source\s+.*oh-my-zsh\.sh/.test(trimmed)) {
+      insertIdx = i;
+      break;
+    }
   }
-  appendFileSync(zshrcPath, addition, 'utf8');
+
+  if (insertIdx !== -1) {
+    // Insert fpath BEFORE the compinit / oh-my-zsh source line
+    lines.splice(insertIdx, 0, marker, fpathLine);
+    writeFileSync(zshrcPath, lines.join('\n'), 'utf8');
+  } else {
+    // No compinit found — append fpath + compinit at the end
+    let addition = `\n${marker}\n${fpathLine}\n${autoloadLine}\n`;
+    appendFileSync(zshrcPath, addition, 'utf8');
+  }
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────
