@@ -18,6 +18,7 @@ const BUILTIN_COMMANDS = [
   'validate',
   'verify',
   'explore',
+  'probe',        // alias for explore
   'synthesize',
   'generate',
   'cascade',
