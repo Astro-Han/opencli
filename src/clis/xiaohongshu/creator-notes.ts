@@ -21,7 +21,7 @@ cli({
   args: [
     { name: 'limit', type: 'int', default: 20, help: 'Number of notes to return' },
   ],
-  columns: ['rank', 'title', 'date', 'views', 'likes', 'collects', 'comments'],
+  columns: ['rank', 'id', 'title', 'date', 'views', 'likes', 'collects', 'comments', 'url'],
   func: async (page, kwargs) => {
     const limit = kwargs.limit || 20;
 
@@ -61,6 +61,9 @@ cli({
 
         cards.forEach(card => {
           const text = card.innerText || '';
+          const linkEl = card.querySelector('a[href*="/publish/"], a[href*="/note/"], a[href*="/explore/"]');
+          const href = linkEl?.getAttribute('href') || '';
+          const idMatch = href.match(/\/(?:publish|explore|note)\/([a-zA-Z0-9]+)/);
           // Try to extract structured data
           const lines = text.split('\\n').map(l => l.trim()).filter(Boolean);
           if (lines.length < 2) return;
@@ -74,12 +77,14 @@ cli({
 
           if (title && !title.includes('全部笔记')) {
             results.push({
+              id: idMatch ? idMatch[1] : '',
               title: title.replace(/\\s+/g, ' ').substring(0, 80),
               date: dateMatch ? dateMatch[1] : '',
               views: nums[0] || 0,
               likes: nums[1] || 0,
               collects: nums[2] || 0,
               comments: nums[3] || 0,
+              url: href ? new URL(href, window.location.origin).toString() : '',
             });
           }
         });
@@ -96,12 +101,14 @@ cli({
       .slice(0, limit)
       .map((n: any, i: number) => ({
         rank: i + 1,
+        id: n.id,
         title: n.title,
         date: n.date,
         views: n.views,
         likes: n.likes,
         collects: n.collects,
         comments: n.comments,
+        url: n.url,
       }));
   },
 });

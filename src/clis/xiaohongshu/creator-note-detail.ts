@@ -23,6 +23,7 @@ cli({
   columns: ['channel', 'reads', 'engagement', 'likes', 'collects', 'comments', 'shares'],
   func: async (page, kwargs) => {
     const noteId: string = kwargs.note_id;
+    const encodedNoteId = encodeURIComponent(noteId);
 
     // Navigate for cookie context
     await page.goto('https://creator.xiaohongshu.com/new/home');
@@ -32,7 +33,7 @@ cli({
       async () => {
         try {
           const resp = await fetch(
-            '/api/galaxy/creator/data/note_detail?note_id=${noteId}',
+            '/api/galaxy/creator/data/note_detail?note_id=${encodedNoteId}',
             { credentials: 'include' }
           );
           if (!resp.ok) return { error: 'HTTP ' + resp.status };

@@ -11,7 +11,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import yaml from 'js-yaml';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -41,6 +41,116 @@ interface ManifestEntry {
   type: 'yaml' | 'ts';
   /** Relative path from clis/ dir, e.g. 'bilibili/hot.yaml' or 'bilibili/search.js' */
   modulePath?: string;
+}
+
+function extractBalancedBlock(
+  source: string,
+  startIndex: number,
+  openChar: string,
+  closeChar: string,
+): string | null {
+  let depth = 0;
+  let quote: string | null = null;
+  let escaped = false;
+
+  for (let i = startIndex; i < source.length; i++) {
+    const ch = source[i];
+
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (ch === quote) quote = null;
+      continue;
+    }
+
+    if (ch === '"' || ch === '\'' || ch === '`') {
+      quote = ch;
+      continue;
+    }
+
+    if (ch === openChar) {
+      depth++;
+    } else if (ch === closeChar) {
+      depth--;
+      if (depth === 0) {
+        return source.slice(startIndex + 1, i);
+      }
+    }
+  }
+
+  return null;
+}
+
+function extractTsArgsBlock(source: string): string | null {
+  const argsMatch = source.match(/args\s*:/);
+  if (!argsMatch || argsMatch.index === undefined) return null;
+
+  const bracketIndex = source.indexOf('[', argsMatch.index);
+  if (bracketIndex === -1) return null;
+
+  return extractBalancedBlock(source, bracketIndex, '[', ']');
+}
+
+function parseInlineChoices(body: string): string[] | undefined {
+  const choicesMatch = body.match(/choices\s*:\s*\[([^\]]*)\]/);
+  if (!choicesMatch) return undefined;
+
+  const values = choicesMatch[1]
+    .split(',')
+    .map(s => s.trim().replace(/^['"`]|['"`]$/g, ''))
+    .filter(Boolean);
+
+  return values.length > 0 ? values : undefined;
+}
+
+export function parseTsArgsBlock(argsBlock: string): ManifestEntry['args'] {
+  const args: ManifestEntry['args'] = [];
+  let cursor = 0;
+
+  while (cursor < argsBlock.length) {
+    const nameMatch = argsBlock.slice(cursor).match(/\{\s*name\s*:\s*['"`](\w+)['"`]/);
+    if (!nameMatch || nameMatch.index === undefined) break;
+
+    const objectStart = cursor + nameMatch.index;
+    const body = extractBalancedBlock(argsBlock, objectStart, '{', '}');
+    if (body == null) break;
+
+    const typeMatch = body.match(/type\s*:\s*['"`](\w+)['"`]/);
+    const defaultMatch = body.match(/default\s*:\s*([^,}]+)/);
+    const requiredMatch = body.match(/required\s*:\s*(true|false)/);
+    const helpMatch = body.match(/help\s*:\s*['"`]([^'"`]*)['"`]/);
+    const positionalMatch = body.match(/positional\s*:\s*(true|false)/);
+
+    let defaultVal: any = undefined;
+    if (defaultMatch) {
+      const raw = defaultMatch[1].trim();
+      if (raw === 'true') defaultVal = true;
+      else if (raw === 'false') defaultVal = false;
+      else if (/^\d+$/.test(raw)) defaultVal = parseInt(raw, 10);
+      else if (/^\d+\.\d+$/.test(raw)) defaultVal = parseFloat(raw);
+      else defaultVal = raw.replace(/^['"`]|['"`]$/g, '');
+    }
+
+    args.push({
+      name: nameMatch[1],
+      type: typeMatch?.[1] ?? 'str',
+      default: defaultVal,
+      required: requiredMatch?.[1] === 'true',
+      positional: positionalMatch?.[1] === 'true' || undefined,
+      help: helpMatch?.[1] ?? '',
+      choices: parseInlineChoices(body),
+    });
+
+    cursor = objectStart + body.length + 2;
+  }
+
+  return args;
 }
 
 function scanYaml(filePath: string, site: string): ManifestEntry | null {
@@ -129,39 +239,9 @@ function scanTs(filePath: string, site: string): ManifestEntry {
     }
 
     // Extract args array items: { name: '...', ... }
-    const argsBlockMatch = src.match(/args\s*:\s*\[([\s\S]*?)\]\s*,/);
-    if (argsBlockMatch) {
-      const argsBlock = argsBlockMatch[1];
-      const argRegex = /\{\s*name\s*:\s*['"`](\w+)['"`]([^}]*)\}/g;
-      let m;
-      while ((m = argRegex.exec(argsBlock)) !== null) {
-        const argName = m[1];
-        const body = m[2];
-        const typeMatch = body.match(/type\s*:\s*['"`](\w+)['"`]/);
-        const defaultMatch = body.match(/default\s*:\s*([^,}]+)/);
-        const requiredMatch = body.match(/required\s*:\s*(true|false)/);
-        const helpMatch = body.match(/help\s*:\s*['"`]([^'"`]*)['"`]/);
-        const positionalMatch = body.match(/positional\s*:\s*(true|false)/);
-
-        let defaultVal: any = undefined;
-        if (defaultMatch) {
-          const raw = defaultMatch[1].trim();
-          if (raw === 'true') defaultVal = true;
-          else if (raw === 'false') defaultVal = false;
-          else if (/^\d+$/.test(raw)) defaultVal = parseInt(raw, 10);
-          else if (/^\d+\.\d+$/.test(raw)) defaultVal = parseFloat(raw);
-          else defaultVal = raw.replace(/^['"`]|['"`]$/g, '');
-        }
-
-        entry.args.push({
-          name: argName,
-          type: typeMatch?.[1] ?? 'str',
-          default: defaultVal,
-          required: requiredMatch?.[1] === 'true',
-          positional: positionalMatch?.[1] === 'true' || undefined,
-          help: helpMatch?.[1] ?? '',
-        });
-      }
+    const argsBlock = extractTsArgsBlock(src);
+    if (argsBlock) {
+      entry.args = parseTsArgsBlock(argsBlock);
     }
   } catch {
     // If parsing fails, fall back to empty metadata — module will self-register at runtime
@@ -170,32 +250,42 @@ function scanTs(filePath: string, site: string): ManifestEntry {
   return entry;
 }
 
-// Main
-const manifest: ManifestEntry[] = [];
+export function buildManifest(): ManifestEntry[] {
+  const manifest: ManifestEntry[] = [];
 
-if (fs.existsSync(CLIS_DIR)) {
-  for (const site of fs.readdirSync(CLIS_DIR)) {
-    const siteDir = path.join(CLIS_DIR, site);
-    if (!fs.statSync(siteDir).isDirectory()) continue;
-    for (const file of fs.readdirSync(siteDir)) {
-      const filePath = path.join(siteDir, file);
-      if (file.endsWith('.yaml') || file.endsWith('.yml')) {
-        const entry = scanYaml(filePath, site);
-        if (entry) manifest.push(entry);
-      } else if (
-        (file.endsWith('.ts') && !file.endsWith('.d.ts') && file !== 'index.ts') ||
-        (file.endsWith('.js') && !file.endsWith('.d.js') && file !== 'index.js')
-      ) {
-        manifest.push(scanTs(filePath, site));
+  if (fs.existsSync(CLIS_DIR)) {
+    for (const site of fs.readdirSync(CLIS_DIR)) {
+      const siteDir = path.join(CLIS_DIR, site);
+      if (!fs.statSync(siteDir).isDirectory()) continue;
+      for (const file of fs.readdirSync(siteDir)) {
+        const filePath = path.join(siteDir, file);
+        if (file.endsWith('.yaml') || file.endsWith('.yml')) {
+          const entry = scanYaml(filePath, site);
+          if (entry) manifest.push(entry);
+        } else if (
+          (file.endsWith('.ts') && !file.endsWith('.d.ts') && file !== 'index.ts') ||
+          (file.endsWith('.js') && !file.endsWith('.d.js') && file !== 'index.js')
+        ) {
+          manifest.push(scanTs(filePath, site));
+        }
       }
     }
   }
+
+  return manifest;
 }
 
-// Ensure output directory exists
-fs.mkdirSync(path.dirname(OUTPUT), { recursive: true });
-fs.writeFileSync(OUTPUT, JSON.stringify(manifest, null, 2));
+function main(): void {
+  const manifest = buildManifest();
+  fs.mkdirSync(path.dirname(OUTPUT), { recursive: true });
+  fs.writeFileSync(OUTPUT, JSON.stringify(manifest, null, 2));
 
-const yamlCount = manifest.filter(e => e.type === 'yaml').length;
-const tsCount = manifest.filter(e => e.type === 'ts').length;
-console.log(`✅ Manifest compiled: ${manifest.length} entries (${yamlCount} YAML, ${tsCount} TS) → ${OUTPUT}`);
+  const yamlCount = manifest.filter(e => e.type === 'yaml').length;
+  const tsCount = manifest.filter(e => e.type === 'ts').length;
+  console.log(`✅ Manifest compiled: ${manifest.length} entries (${yamlCount} YAML, ${tsCount} TS) → ${OUTPUT}`);
+}
+
+const entrypoint = process.argv[1] ? pathToFileURL(path.resolve(process.argv[1])).href : null;
+if (entrypoint === import.meta.url) {
+  main();
+}
