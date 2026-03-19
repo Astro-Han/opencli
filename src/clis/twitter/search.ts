@@ -24,46 +24,28 @@ cli({
     //    fetch will capture the SearchTimeline API call.
     await page.installInterceptor('SearchTimeline');
 
-    // 3. Use the search input to submit the query (SPA, no full reload).
-    //    Find the search input, type the query, and submit.
+    // 3. Trigger SPA navigation to search results via history API.
+    //    pushState + popstate triggers React Router's listener without
+    //    a full page reload, so the interceptor stays alive.
+    //    Note: the previous approach (nativeSetter + Enter keydown on the
+    //    search input) does not reliably trigger Twitter's form submission.
+    const searchUrl = JSON.stringify(`/search?q=${encodeURIComponent(query)}&f=top`);
     await page.evaluate(`
       (() => {
-        const input = document.querySelector('input[data-testid="SearchBox_Search_Input"]');
-        if (!input) throw new Error('Search input not found');
-        input.focus();
-        const nativeSetter = Object.getOwnPropertyDescriptor(
-          HTMLInputElement.prototype, 'value'
-        ).set;
-        nativeSetter.call(input, ${JSON.stringify(query)});
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-      })()
-    `);
-    await page.wait(0.5);
-    // Press Enter to submit
-    await page.evaluate(`
-      (() => {
-        const input = document.querySelector('input[data-testid="SearchBox_Search_Input"]');
-        if (!input) throw new Error('Search input not found');
-        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }));
+        window.history.pushState({}, '', ${searchUrl});
+        window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
       })()
     `);
     await page.wait(5);
 
-    // 4. Click "Top" tab if available (ensures we get top results)
-    try {
-      await page.evaluate(`
-        (() => {
-          const tabs = document.querySelectorAll('[role="tab"]');
-          for (const tab of tabs) {
-            if (tab.textContent.trim() === 'Top') { tab.click(); break; }
-          }
-        })()
-      `);
-      await page.wait(2);
-    } catch { /* ignore if tab not found */ }
+    // Verify SPA navigation succeeded
+    const currentPath = await page.evaluate('() => window.location.pathname');
+    if (!currentPath?.startsWith('/search')) {
+        throw new Error('SPA navigation to /search failed. Twitter may have changed its routing.');
+    }
 
-    // 5. Scroll to trigger additional pagination
-    await page.autoScroll({ times: 2, delayMs: 2000 });
+    // 4. Scroll to trigger additional pagination
+    await page.autoScroll({ times: 3, delayMs: 2000 });
 
     // 6. Retrieve captured data
     const requests = await page.getInterceptedRequests();
