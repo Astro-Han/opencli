@@ -260,21 +260,18 @@ export class Page implements IPage {
 
   async installInterceptor(pattern: string): Promise<void> {
     const { generateInterceptorJs } = await import('../interceptor.js');
-    await sendCommand('exec', {
-      code: generateInterceptorJs(JSON.stringify(pattern), {
-        arrayName: '__opencli_xhr',
-        patchGuard: '__opencli_interceptor_patched',
-      }),
-      ...this._tabOpt(),
-    });
+    // Must use evaluate() so wrapForEval() converts the arrow function into an IIFE;
+    // sendCommand('exec') sends the code as-is, and CDP never executes a bare arrow.
+    await this.evaluate(generateInterceptorJs(JSON.stringify(pattern), {
+      arrayName: '__opencli_xhr',
+      patchGuard: '__opencli_interceptor_patched',
+    }));
   }
 
   async getInterceptedRequests(): Promise<any[]> {
     const { generateReadInterceptedJs } = await import('../interceptor.js');
-    const result = await sendCommand('exec', {
-      code: generateReadInterceptedJs('__opencli_xhr'),
-      ...this._tabOpt(),
-    });
+    // Same as installInterceptor: must go through evaluate() for IIFE wrapping
+    const result = await this.evaluate(generateReadInterceptedJs('__opencli_xhr'));
     return (result as any[]) || [];
   }
 }
