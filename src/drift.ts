@@ -61,6 +61,7 @@ export function detectDrift(
  * Wrapped in chalk.yellow. No trailing newline (console.error adds it).
  */
 export function formatDriftWarning(report: DriftReport, commandName: string): string {
+  if (!report.fields.length) return '';
   const lines = [chalk.yellow(`\u26a0 Schema drift detected (${commandName}):`)];
   for (const f of report.fields) {
     const pct = Math.round(f.emptyRate * 100);

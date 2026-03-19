@@ -46,8 +46,8 @@ describe('detectDrift', () => {
     expect(report.fields[0].emptyRate).toBe(0.8);
   });
 
-  it('does not detect drift below threshold', () => {
-    // 3 out of 5 = 60%, below default 0.8
+  it('does not detect drift below threshold (60%)', () => {
+    // 3 out of 5 = 60%, well below default 0.8
     const rows = [
       { title: '' },
       { title: '' },
@@ -56,6 +56,18 @@ describe('detectDrift', () => {
       { title: 'y' },
     ];
     const report = detectDrift(rows, ['title']);
+    expect(report.hasDrift).toBe(false);
+  });
+
+  it('does not detect drift just below threshold (75%)', () => {
+    // 3 out of 4 = 75%, just under 0.8
+    const rows = [
+      { title: '' },
+      { title: '' },
+      { title: '' },
+      { title: 'x' },
+    ];
+    const report = detectDrift(rows, ['title'], 0.8);
     expect(report.hasDrift).toBe(false);
   });
 

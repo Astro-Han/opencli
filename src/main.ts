@@ -206,6 +206,7 @@ for (const [, cmd] of registry) {
       if (actionOpts.verbose && (!result || (Array.isArray(result) && result.length === 0))) {
         console.error(chalk.yellow(`[Verbose] Warning: Command returned an empty result. If the website structural API changed or requires authentication, check the network or update the adapter.`));
       }
+      // Schema drift: warn if columns are suspiciously empty (non-breaking, stderr only)
       if (Array.isArray(result) && result.length > 0 && cmd.columns?.length) {
         const report = detectDrift(result, cmd.columns);
         if (report.hasDrift) {
