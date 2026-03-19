@@ -6,10 +6,13 @@
 import { describe, it, expect } from 'vitest';
 import { runCli, parseJsonOutput } from './helpers.js';
 
-function isExpectedXiaoyuzhouRestriction(code: number, stderr: string): boolean {
+function isExpectedChineseSiteRestriction(code: number, stderr: string): boolean {
   if (code === 0) return false;
   return /Error \[FETCH_ERROR\]: HTTP (403|429|451|503)\b/.test(stderr);
 }
+
+// Keep old name as alias for existing tests
+const isExpectedXiaoyuzhouRestriction = isExpectedChineseSiteRestriction;
 
 describe('public commands E2E', () => {
   // ── hackernews ──
@@ -114,5 +117,35 @@ describe('public commands E2E', () => {
     }
     expect(code).not.toBe(0);
     expect(stderr).toMatch(/limit must be a positive integer|Argument "limit" must be a valid number/);
+  }, 30_000);
+
+  // ── weread (Chinese site — may return empty on overseas CI runners) ──
+  it('weread search returns books', async () => {
+    const { stdout, stderr, code } = await runCli(['weread', 'search', 'python', '--limit', '3', '-f', 'json']);
+    if (isExpectedChineseSiteRestriction(code, stderr)) {
+      console.warn(`weread search skipped: ${stderr.trim()}`);
+      return;
+    }
+    expect(code).toBe(0);
+    const data = parseJsonOutput(stdout);
+    expect(Array.isArray(data)).toBe(true);
+    expect(data.length).toBeGreaterThanOrEqual(1);
+    expect(data[0]).toHaveProperty('title');
+    expect(data[0]).toHaveProperty('bookId');
+  }, 30_000);
+
+  it('weread ranking returns books', async () => {
+    const { stdout, stderr, code } = await runCli(['weread', 'ranking', 'all', '--limit', '3', '-f', 'json']);
+    if (isExpectedChineseSiteRestriction(code, stderr)) {
+      console.warn(`weread ranking skipped: ${stderr.trim()}`);
+      return;
+    }
+    expect(code).toBe(0);
+    const data = parseJsonOutput(stdout);
+    expect(Array.isArray(data)).toBe(true);
+    expect(data.length).toBeGreaterThanOrEqual(1);
+    expect(data[0]).toHaveProperty('title');
+    expect(data[0]).toHaveProperty('readingCount');
+    expect(data[0]).toHaveProperty('bookId');
   }, 30_000);
 });
