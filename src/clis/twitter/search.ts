@@ -91,9 +91,11 @@ cli({
           if (!tweet.rest_id || seen.has(tweet.rest_id)) continue;
           seen.add(tweet.rest_id);
 
+          // Twitter moved screen_name from legacy to core
+          const tweetUser = tweet.core?.user_results?.result;
           results.push({
             id: tweet.rest_id,
-            author: tweet.core?.user_results?.result?.legacy?.screen_name || 'unknown',
+            author: tweetUser?.core?.screen_name || tweetUser?.legacy?.screen_name || 'unknown',
             text: tweet.note_tweet?.note_tweet_results?.result?.text || tweet.legacy?.full_text || '',
             likes: tweet.legacy?.favorite_count || 0,
             views: tweet.views?.count || '0',
