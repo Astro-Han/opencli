@@ -122,6 +122,26 @@ export function runCli(BUILTIN_CLIS: string, USER_CLIS: string): void {
       printCompletionScript(shell);
     });
 
+  program.command('describe')
+    .description('Describe a CLI command or external tool')
+    .argument('<target>', 'Site name or external CLI name')
+    .argument('[subcommands...]', 'Subcommand path (e.g. pr list)')
+    .option('-f, --format <fmt>', 'Output format: text, json', 'text')
+    .action(async (target: string, subcommands: string[], opts: { format: string }) => {
+      const { describeTarget, renderDescribeText, renderDescribeJson } = await import('./describe.js');
+      try {
+        const result = describeTarget(target, subcommands);
+        if (opts.format === 'json') {
+          console.log(renderDescribeJson(result));
+        } else {
+          console.log(renderDescribeText(result));
+        }
+      } catch (err: any) {
+        console.error(chalk.red(`Error: ${err.message}`));
+        process.exitCode = 1;
+      }
+    });
+
   const externalClis = loadExternalClis();
 
   program.command('install')
