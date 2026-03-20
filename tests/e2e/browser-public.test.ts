@@ -186,6 +186,17 @@ describe('browser public-data commands E2E', () => {
     expectDataOrSkip(data, 'xiaohongshu search');
   }, 60_000);
 
+  // ── google search (browser: true, cookie strategy) ──
+  it('google search returns results', async () => {
+    const data = await tryBrowserCommand(['google', 'search', 'typescript', '--limit', '5', '-f', 'json']);
+    expectDataOrSkip(data, 'google search');
+    if (data) {
+      expect(data[0]).toHaveProperty('type');
+      expect(data[0]).toHaveProperty('title');
+      expect(data[0]).toHaveProperty('url');
+    }
+  }, 60_000);
+
   // ── yahoo-finance (browser: true) ──
   it('yahoo-finance quote returns stock data', async () => {
     const data = await tryBrowserCommand(['yahoo-finance', 'quote', '--symbol', 'AAPL', '-f', 'json']);

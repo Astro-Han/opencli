@@ -16,6 +16,12 @@ function isExpectedApplePodcastsRestriction(code: number, stderr: string): boole
   return /Error \[FETCH_ERROR\]: (Charts API HTTP \d+|Unable to reach Apple Podcasts charts)/.test(stderr);
 }
 
+function isExpectedGoogleRestriction(code: number, stderr: string): boolean {
+  if (code === 0) return false;
+  // Network unreachable (DNS/proxy) or HTTP error from Google
+  return /fetch failed/.test(stderr) || /Error \[FETCH_ERROR\]: HTTP (403|429|451|503)\b/.test(stderr);
+}
+
 // Keep old name as alias for existing tests
 const isExpectedXiaoyuzhouRestriction = isExpectedChineseSiteRestriction;
 
@@ -205,6 +211,64 @@ describe('public commands E2E', () => {
     }
     expect(code).not.toBe(0);
     expect(stderr).toMatch(/limit must be a positive integer|Argument "limit" must be a valid number/);
+  }, 30_000);
+
+  // ── google suggest (public JSON API) ──
+  it('google suggest returns suggestions', async () => {
+    const { stdout, stderr, code } = await runCli(['google', 'suggest', 'python', '-f', 'json']);
+    if (isExpectedGoogleRestriction(code, stderr)) {
+      console.warn(`google suggest skipped: ${stderr.trim()}`);
+      return;
+    }
+    expect(code).toBe(0);
+    const data = parseJsonOutput(stdout);
+    expect(Array.isArray(data)).toBe(true);
+    expect(data.length).toBeGreaterThanOrEqual(1);
+    expect(data[0]).toHaveProperty('suggestion');
+  }, 30_000);
+
+  // ── google news (public RSS) ──
+  it('google news returns headlines', async () => {
+    const { stdout, stderr, code } = await runCli(['google', 'news', '--limit', '3', '-f', 'json']);
+    if (isExpectedGoogleRestriction(code, stderr)) {
+      console.warn(`google news skipped: ${stderr.trim()}`);
+      return;
+    }
+    expect(code).toBe(0);
+    const data = parseJsonOutput(stdout);
+    expect(Array.isArray(data)).toBe(true);
+    expect(data.length).toBeGreaterThanOrEqual(1);
+    expect(data[0]).toHaveProperty('title');
+    expect(data[0]).toHaveProperty('source');
+    expect(data[0]).toHaveProperty('url');
+  }, 30_000);
+
+  it('google news search returns results', async () => {
+    const { stdout, stderr, code } = await runCli(['google', 'news', 'AI', '--limit', '3', '-f', 'json']);
+    if (isExpectedGoogleRestriction(code, stderr)) {
+      console.warn(`google news search skipped: ${stderr.trim()}`);
+      return;
+    }
+    expect(code).toBe(0);
+    const data = parseJsonOutput(stdout);
+    expect(Array.isArray(data)).toBe(true);
+    expect(data.length).toBeGreaterThanOrEqual(1);
+    expect(data[0]).toHaveProperty('title');
+  }, 30_000);
+
+  // ── google trends (public RSS) ──
+  it('google trends returns trending searches', async () => {
+    const { stdout, stderr, code } = await runCli(['google', 'trends', '--region', 'US', '--limit', '3', '-f', 'json']);
+    if (isExpectedGoogleRestriction(code, stderr)) {
+      console.warn(`google trends skipped: ${stderr.trim()}`);
+      return;
+    }
+    expect(code).toBe(0);
+    const data = parseJsonOutput(stdout);
+    expect(Array.isArray(data)).toBe(true);
+    expect(data.length).toBeGreaterThanOrEqual(1);
+    expect(data[0]).toHaveProperty('title');
+    expect(data[0]).toHaveProperty('traffic');
   }, 30_000);
 
   // ── weread (Chinese site — may return empty on overseas CI runners) ──
