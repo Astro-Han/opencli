@@ -248,10 +248,8 @@ async function resolveTabId(tabId: number | undefined, workspace: string): Promi
   const webTab = tabs.find(t => t.id && isWebUrl(t.url));
   if (webTab?.id) return webTab.id;
 
-  // Use the first tab if it's a blank/new tab page
-  if (tabs.length > 0 && tabs[0]?.id) return tabs[0].id;
-
-  // No suitable tab — create one
+  // No suitable web tab — create one (don't fall back to chrome-extension:// tabs
+  // which can't be debugged via CDP, causing "attach failed" errors)
   const newTab = await chrome.tabs.create({ windowId, url: 'about:blank', active: true });
   if (!newTab.id) throw new Error('Failed to create tab in automation window');
   return newTab.id;
