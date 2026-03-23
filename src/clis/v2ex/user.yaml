@@ -14,7 +14,7 @@ args:
   limit:
     type: int
     default: 10
-    description: Number of topics
+    description: Number of topics (API returns max 20)
 
 pipeline:
   - fetch:

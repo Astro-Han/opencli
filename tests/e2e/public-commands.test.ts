@@ -240,7 +240,11 @@ describe('public commands E2E', () => {
   }, 30_000);
 
   it('v2ex node returns topics for a given node', async () => {
-    const { stdout, code } = await runCli(['v2ex', 'node', 'python', '--limit', '3', '-f', 'json']);
+    const { stdout, stderr, code } = await runCli(['v2ex', 'node', 'python', '--limit', '3', '-f', 'json']);
+    if (isExpectedChineseSiteRestriction(code, stderr)) {
+      console.warn(`v2ex node skipped: ${stderr.trim()}`);
+      return;
+    }
     expect(code).toBe(0);
     const data = parseJsonOutput(stdout);
     expect(Array.isArray(data)).toBe(true);
@@ -250,7 +254,11 @@ describe('public commands E2E', () => {
   }, 30_000);
 
   it('v2ex user returns topics by username', async () => {
-    const { stdout, code } = await runCli(['v2ex', 'user', 'Livid', '--limit', '3', '-f', 'json']);
+    const { stdout, stderr, code } = await runCli(['v2ex', 'user', 'Livid', '--limit', '3', '-f', 'json']);
+    if (isExpectedChineseSiteRestriction(code, stderr)) {
+      console.warn(`v2ex user skipped: ${stderr.trim()}`);
+      return;
+    }
     expect(code).toBe(0);
     const data = parseJsonOutput(stdout);
     expect(Array.isArray(data)).toBe(true);
@@ -260,7 +268,11 @@ describe('public commands E2E', () => {
   }, 30_000);
 
   it('v2ex member returns user profile', async () => {
-    const { stdout, code } = await runCli(['v2ex', 'member', 'Livid', '-f', 'json']);
+    const { stdout, stderr, code } = await runCli(['v2ex', 'member', 'Livid', '-f', 'json']);
+    if (isExpectedChineseSiteRestriction(code, stderr)) {
+      console.warn(`v2ex member skipped: ${stderr.trim()}`);
+      return;
+    }
     expect(code).toBe(0);
     const data = parseJsonOutput(stdout);
     expect(Array.isArray(data)).toBe(true);
@@ -269,7 +281,11 @@ describe('public commands E2E', () => {
   }, 30_000);
 
   it('v2ex replies returns topic replies', async () => {
-    const { stdout, code } = await runCli(['v2ex', 'replies', '1000', '--limit', '3', '-f', 'json']);
+    const { stdout, stderr, code } = await runCli(['v2ex', 'replies', '1000', '--limit', '3', '-f', 'json']);
+    if (isExpectedChineseSiteRestriction(code, stderr)) {
+      console.warn(`v2ex replies skipped: ${stderr.trim()}`);
+      return;
+    }
     expect(code).toBe(0);
     const data = parseJsonOutput(stdout);
     expect(Array.isArray(data)).toBe(true);
@@ -279,7 +295,11 @@ describe('public commands E2E', () => {
   }, 30_000);
 
   it('v2ex nodes returns node list sorted by topics', async () => {
-    const { stdout, code } = await runCli(['v2ex', 'nodes', '--limit', '5', '-f', 'json']);
+    const { stdout, stderr, code } = await runCli(['v2ex', 'nodes', '--limit', '5', '-f', 'json']);
+    if (isExpectedChineseSiteRestriction(code, stderr)) {
+      console.warn(`v2ex nodes skipped: ${stderr.trim()}`);
+      return;
+    }
     expect(code).toBe(0);
     const data = parseJsonOutput(stdout);
     expect(Array.isArray(data)).toBe(true);
@@ -287,6 +307,8 @@ describe('public commands E2E', () => {
     expect(data[0]).toHaveProperty('name');
     expect(data[0]).toHaveProperty('title');
     expect(data[0]).toHaveProperty('topics');
+    // Verify descending sort by topic count
+    expect(Number(data[0].topics)).toBeGreaterThanOrEqual(Number(data[data.length - 1].topics));
   }, 30_000);
 
   // ── xiaoyuzhou (Chinese site — may return empty on overseas CI runners) ──

@@ -42,5 +42,9 @@ opencli v2ex hot -f json
 
 ## Prerequisites
 
+Most commands (`hot`, `latest`, `topic`, `node`, `user`, `member`, `replies`, `nodes`) use the public V2EX API and **require no browser or login**.
+
+For `daily`, `me`, and `notifications`:
+
 - Chrome running and **logged into** v2ex.com
 - [Browser Bridge extension](/guide/browser-bridge) installed
