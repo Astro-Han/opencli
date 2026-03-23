@@ -155,6 +155,7 @@ OpenCLI acts as a universal hub for your existing command-line tools. It provide
 | **docker** | Docker command-line interface | `opencli docker ps` |
 | **kubectl** | Kubernetes command-line tool | `opencli kubectl get pods` |
 | **readwise** | Readwise & Reader CLI | `opencli readwise login` |
+| **gws** | Google Workspace CLI — Docs, Sheets, Drive, Gmail, Calendar | `opencli gws docs list` |
 
 **Zero Configuration**: OpenCLI purely passes your inputs to the underlying binary via standard I/O streams. The external CLI works exactly as it naturally would, maintaining its standard output formats.
 
