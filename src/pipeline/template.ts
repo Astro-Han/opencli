@@ -65,12 +65,13 @@ export function evalExpr(expr: string, ctx: RenderContext): unknown {
   }
 
   // JS-like fallback expression: item.tweetCount || 'N/A'
+  // Recursively evaluate the right side so chained || works:
+  //   item.a || item.b || 'default'  →  eval(item.a) || eval(item.b || 'default')
   const orMatch = expr.match(/^(.+?)\s*\|\|\s*(.+)$/);
   if (orMatch) {
     const left = evalExpr(orMatch[1].trim(), ctx);
     if (left) return left;
-    const right = orMatch[2].trim();
-    return right.replace(/^['"]|['"]$/g, '');
+    return evalExpr(orMatch[2].trim(), ctx);
   }
 
   const resolved = resolvePath(expr, { args, item, data, index });
