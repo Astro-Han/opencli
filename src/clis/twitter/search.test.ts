@@ -1,0 +1,86 @@
+import { describe, expect, it, vi } from 'vitest';
+import { getRegistry } from '../../registry.js';
+import './search.js';
+
+describe('twitter search command', () => {
+  it('retries transient SPA navigation failures before giving up', async () => {
+    const command = getRegistry().get('twitter/search');
+    expect(command?.func).toBeTypeOf('function');
+
+    const evaluate = vi.fn()
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce('/explore')
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce('/search');
+
+    const page = {
+      goto: vi.fn().mockResolvedValue(undefined),
+      wait: vi.fn().mockResolvedValue(undefined),
+      installInterceptor: vi.fn().mockResolvedValue(undefined),
+      evaluate,
+      autoScroll: vi.fn().mockResolvedValue(undefined),
+      getInterceptedRequests: vi.fn().mockResolvedValue([
+        {
+          data: {
+            search_by_raw_query: {
+              search_timeline: {
+                timeline: {
+                  instructions: [
+                    {
+                      type: 'TimelineAddEntries',
+                      entries: [
+                        {
+                          entryId: 'tweet-1',
+                          content: {
+                            itemContent: {
+                              tweet_results: {
+                                result: {
+                                  rest_id: '1',
+                                  legacy: {
+                                    full_text: 'hello world',
+                                    favorite_count: 7,
+                                  },
+                                  core: {
+                                    user_results: {
+                                      result: {
+                                        core: {
+                                          screen_name: 'alice',
+                                        },
+                                      },
+                                    },
+                                  },
+                                  views: {
+                                    count: '12',
+                                  },
+                                },
+                              },
+                            },
+                          },
+                        },
+                      ],
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      ]),
+    };
+
+    const result = await command!.func!(page as any, { query: 'from:alice', limit: 5 });
+
+    expect(result).toEqual([
+      {
+        id: '1',
+        author: 'alice',
+        text: 'hello world',
+        likes: 7,
+        views: '12',
+        url: 'https://x.com/i/status/1',
+      },
+    ]);
+    expect(page.installInterceptor).toHaveBeenCalledWith('SearchTimeline');
+    expect(evaluate).toHaveBeenCalledTimes(4);
+  });
+});
