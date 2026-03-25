@@ -76,6 +76,9 @@ describe('evalExpr', () => {
   it('evaluates 4-way chained ||', () => {
     expect(evalExpr("item.a || item.b || item.c || 'last'", { item: { c: 'third' } })).toBe('third');
   });
+  it('handles || combined with pipe filter', () => {
+    expect(evalExpr("item.a || item.b | upper", { item: { b: 'hello' } })).toBe('HELLO');
+  });
   it('resolves simple path', () => {
     expect(evalExpr('item.title', { item: { title: 'Test' } })).toBe('Test');
   });
