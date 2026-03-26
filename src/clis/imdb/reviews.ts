@@ -1,6 +1,13 @@
 import { CommandExecutionError } from '../../errors.js';
 import { cli, Strategy } from '../../registry.js';
-import { forceEnglishUrl, isChallengePage, normalizeImdbId } from './utils.js';
+import {
+  forceEnglishUrl,
+  getCurrentImdbId,
+  isChallengePage,
+  normalizeImdbId,
+  waitForImdbPath,
+  waitForImdbReviewsReady,
+} from './utils.js';
 
 /**
  * Read IMDb user reviews from the first review page.
@@ -23,12 +30,27 @@ cli({
     const url = forceEnglishUrl(`https://www.imdb.com/title/${id}/reviews/`);
 
     await page.goto(url);
-    await page.wait(3);
+    const onReviewsPage = await waitForImdbPath(page, `^/title/${id}/reviews/?$`);
+    const reviewsReady = await waitForImdbReviewsReady(page, 15000);
 
     if (await isChallengePage(page)) {
       throw new CommandExecutionError(
         'IMDb blocked this request',
         'Try again with a normal browser session or extension mode',
+      );
+    }
+    if (!onReviewsPage || !reviewsReady) {
+      throw new CommandExecutionError(
+        'IMDb reviews did not finish loading',
+        'Retry the command; if it persists, the review page structure may have changed',
+      );
+    }
+
+    const currentId = await getCurrentImdbId(page, 'tt');
+    if (currentId && currentId !== id) {
+      throw new CommandExecutionError(
+        `IMDb redirected to a different title: ${currentId}`,
+        'Retry the command; if it persists, the review page may have changed',
       );
     }
 

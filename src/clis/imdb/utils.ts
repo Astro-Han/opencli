@@ -59,6 +59,40 @@ export function forceEnglishUrl(url: string): string {
 }
 
 /**
+ * Normalize IMDb title-type payloads that may be represented as an object,
+ * a raw string, or an empty text field with only an internal id.
+ */
+export function normalizeImdbTitleType(input: unknown): string {
+  const raw = (() => {
+    if (typeof input === 'string') return input;
+    if (!input || typeof input !== 'object') return '';
+    const value = input as Record<string, unknown>;
+    return typeof value.text === 'string' && value.text.trim()
+      ? value.text
+      : typeof value.id === 'string'
+        ? value.id
+        : '';
+  })().trim();
+
+  if (!raw) return '';
+
+  const known: Record<string, string> = {
+    movie: 'Movie',
+    short: 'Short',
+    video: 'Video',
+    tvEpisode: 'TV Episode',
+    tvMiniSeries: 'TV Mini Series',
+    tvMovie: 'TV Movie',
+    tvSeries: 'TV Series',
+    tvShort: 'TV Short',
+    tvSpecial: 'TV Special',
+    videoGame: 'Video Game',
+  };
+
+  return known[raw] ?? raw;
+}
+
+/**
  * Extract structured JSON-LD data from the page.
  * Accepts a single type string or an array of types to match against @type.
  */
@@ -128,6 +162,126 @@ export async function extractJsonLd(page: IPage, type?: string | string[]): Prom
       return null;
     })()
   `);
+}
+
+/**
+ * Poll until the current IMDb page path matches the expected entity/search path.
+ */
+export async function waitForImdbPath(page: IPage, pathPattern: string, timeoutMs: number = 15000): Promise<boolean> {
+  const result = await page.evaluate(`
+    (async function() {
+      var deadline = Date.now() + ${timeoutMs};
+      var pattern = new RegExp(${JSON.stringify(pathPattern)}, 'i');
+      while (Date.now() < deadline) {
+        if (pattern.test(window.location.pathname)) {
+          return true;
+        }
+        await new Promise(function(resolve) { setTimeout(resolve, 250); });
+      }
+      return pattern.test(window.location.pathname);
+    })()
+  `);
+  return Boolean(result);
+}
+
+/**
+ * Wait until IMDb search results (or the search UI state) has rendered.
+ */
+export async function waitForImdbSearchReady(page: IPage, timeoutMs: number = 15000): Promise<boolean> {
+  const result = await page.evaluate(`
+    (async function() {
+      var deadline = Date.now() + ${timeoutMs};
+
+      function hasSearchResults() {
+        var nextDataEl = document.getElementById('__NEXT_DATA__');
+        if (nextDataEl) {
+          try {
+            var nextData = JSON.parse(nextDataEl.textContent || 'null');
+            var pageProps = nextData && nextData.props && nextData.props.pageProps;
+            var titleResults = (pageProps && pageProps.titleResults && pageProps.titleResults.results) || [];
+            var nameResults = (pageProps && pageProps.nameResults && pageProps.nameResults.results) || [];
+            if (titleResults.length > 0 || nameResults.length > 0) {
+              return true;
+            }
+          } catch (error) {
+            void error;
+          }
+        }
+
+        if (document.querySelector('a[href*="/title/"], a[href*="/name/"]')) {
+          return true;
+        }
+
+        var body = document.body ? (document.body.textContent || '') : '';
+        return body.includes('No results found for') || body.includes('No exact matches');
+      }
+
+      while (Date.now() < deadline) {
+        if (hasSearchResults()) {
+          return true;
+        }
+        await new Promise(function(resolve) { setTimeout(resolve, 250); });
+      }
+
+      return hasSearchResults();
+    })()
+  `);
+  return Boolean(result);
+}
+
+/**
+ * Wait until IMDb review cards (or the page review summary) has rendered.
+ */
+export async function waitForImdbReviewsReady(page: IPage, timeoutMs: number = 15000): Promise<boolean> {
+  const result = await page.evaluate(`
+    (async function() {
+      var deadline = Date.now() + ${timeoutMs};
+
+      function hasReviewContent() {
+        if (document.querySelector('article.user-review-item, [data-testid="review-card-parent"], [data-testid="tturv-total-reviews"]')) {
+          return true;
+        }
+        var body = document.body ? (document.body.textContent || '') : '';
+        return body.includes('No user reviews') || body.includes('Review this title');
+      }
+
+      while (Date.now() < deadline) {
+        if (hasReviewContent()) {
+          return true;
+        }
+        await new Promise(function(resolve) { setTimeout(resolve, 250); });
+      }
+
+      return hasReviewContent();
+    })()
+  `);
+  return Boolean(result);
+}
+
+/**
+ * Read the current IMDb entity id from the page URL/canonical metadata.
+ */
+export async function getCurrentImdbId(page: IPage, prefix: 'tt' | 'nm'): Promise<string> {
+  const result = await page.evaluate(`
+    (function() {
+      var pattern = new RegExp('(${prefix}\\\\d{7,8})', 'i');
+      var candidates = [
+        window.location.pathname || '',
+        document.querySelector('link[rel="canonical"]')?.getAttribute('href') || '',
+        document.querySelector('meta[property="og:url"]')?.getAttribute('content') || ''
+      ];
+
+      for (var i = 0; i < candidates.length; i++) {
+        var match = candidates[i].match(pattern);
+        if (match) {
+          return match[1];
+        }
+      }
+      return '';
+    })()
+  `);
+
+  return typeof result === 'string' ? result : '';
 }
 
 /**

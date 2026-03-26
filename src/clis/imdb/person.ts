@@ -1,6 +1,12 @@
 import { CommandExecutionError } from '../../errors.js';
 import { cli, Strategy } from '../../registry.js';
-import { forceEnglishUrl, isChallengePage, normalizeImdbId } from './utils.js';
+import {
+  forceEnglishUrl,
+  getCurrentImdbId,
+  isChallengePage,
+  normalizeImdbId,
+  waitForImdbPath,
+} from './utils.js';
 
 /**
  * Read IMDb person details from public profile pages.
@@ -24,7 +30,7 @@ cli({
     const url = forceEnglishUrl(`https://www.imdb.com/name/${id}/`);
 
     await page.goto(url);
-    await page.wait(2);
+    const onPersonPage = await waitForImdbPath(page, `^/name/${id}/`);
 
     if (await isChallengePage(page)) {
       throw new CommandExecutionError(
@@ -32,10 +38,25 @@ cli({
         'Try again with a normal browser session or extension mode',
       );
     }
+    if (!onPersonPage) {
+      throw new CommandExecutionError(
+        `Person page did not finish loading: ${id}`,
+        'Retry the command; if it persists, IMDb may have changed their navigation flow',
+      );
+    }
+
+    const currentId = await getCurrentImdbId(page, 'nm');
+    if (currentId && currentId !== id) {
+      throw new CommandExecutionError(
+        `IMDb redirected to a different person: ${currentId}`,
+        'Retry the command; if it persists, the person page may have changed',
+      );
+    }
 
     const data = await page.evaluate(`
       (function() {
         var result = {
+          nameId: '',
           name: '',
           description: '',
           birthDate: '',
@@ -47,6 +68,12 @@ cli({
           try {
             var ld = JSON.parse(scripts[i].textContent || 'null');
             if (ld && ld['@type'] === 'Person') {
+              if (typeof ld.url === 'string') {
+                var ldMatch = ld.url.match(/(nm\\d{7,8})/);
+                if (ldMatch) {
+                  result.nameId = ldMatch[1];
+                }
+              }
               result.name = result.name || ld.name || '';
               result.description = result.description || ld.description || '';
               break;
@@ -68,6 +95,9 @@ cli({
           var main = pageProps && (pageProps.mainColumnData || pageProps.belowTheFold);
 
           if (above) {
+            if (!result.nameId && above.id) {
+              result.nameId = String(above.id);
+            }
             if (!result.name && above.nameText && above.nameText.text) {
               result.name = above.nameText.text;
             }
@@ -169,13 +199,19 @@ cli({
     }
 
     const result = data as Record<string, any>;
+    if (result.nameId && result.nameId !== id) {
+      throw new CommandExecutionError(
+        `IMDb returned a different person payload: ${result.nameId}`,
+        'Retry the command; if it persists, the person parser may need updating',
+      );
+    }
     const filmography = Array.isArray(result.filmography) ? result.filmography : [];
 
     // Override url with a clean canonical URL (no query params like ?language=en-US)
     result.url = `https://www.imdb.com/name/${id}/`;
 
     const rows = Object.entries(result)
-      .filter(([field, value]) => field !== 'filmography' && value !== '' && value != null)
+      .filter(([field, value]) => field !== 'filmography' && field !== 'nameId' && value !== '' && value != null)
       .map(([field, value]) => ({ field, value: String(value) }));
 
     if (filmography.length > 0) {

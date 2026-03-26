@@ -4,8 +4,13 @@ import {
   extractJsonLd,
   forceEnglishUrl,
   formatDuration,
+  getCurrentImdbId,
   isChallengePage,
+  normalizeImdbTitleType,
   normalizeImdbId,
+  waitForImdbPath,
+  waitForImdbReviewsReady,
+  waitForImdbSearchReady,
 } from './utils.js';
 
 describe('normalizeImdbId', () => {
@@ -54,6 +59,18 @@ describe('forceEnglishUrl', () => {
   });
 });
 
+describe('normalizeImdbTitleType', () => {
+  it('maps internal imdb ids to readable labels', () => {
+    expect(normalizeImdbTitleType({ id: 'movie', text: '' })).toBe('Movie');
+    expect(normalizeImdbTitleType({ id: 'tvSeries', text: '' })).toBe('TV Series');
+    expect(normalizeImdbTitleType('short')).toBe('Short');
+  });
+
+  it('preserves explicit text labels', () => {
+    expect(normalizeImdbTitleType({ id: 'movie', text: 'Feature Film' })).toBe('Feature Film');
+  });
+});
+
 describe('extractJsonLd', () => {
   it('returns the evaluated JSON-LD payload', async () => {
     const page = {
@@ -74,5 +91,27 @@ describe('isChallengePage', () => {
 
     await expect(isChallengePage(page)).resolves.toBe(true);
     expect(page.evaluate).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('imdb browser helpers', () => {
+  it('reads the current imdb id from page metadata', async () => {
+    const page = {
+      evaluate: vi.fn().mockResolvedValue('nm0634240'),
+    } as unknown as IPage;
+
+    await expect(getCurrentImdbId(page, 'nm')).resolves.toBe('nm0634240');
+    expect(page.evaluate).toHaveBeenCalledTimes(1);
+  });
+
+  it('wait helpers resolve mocked readiness booleans', async () => {
+    const page = {
+      evaluate: vi.fn().mockResolvedValue(true),
+    } as unknown as IPage;
+
+    await expect(waitForImdbPath(page, '^/find/?$')).resolves.toBe(true);
+    await expect(waitForImdbSearchReady(page)).resolves.toBe(true);
+    await expect(waitForImdbReviewsReady(page)).resolves.toBe(true);
+    expect(page.evaluate).toHaveBeenCalledTimes(3);
   });
 });

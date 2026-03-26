@@ -1,6 +1,12 @@
 import { ArgumentError, CommandExecutionError } from '../../errors.js';
 import { cli, Strategy } from '../../registry.js';
-import { forceEnglishUrl, isChallengePage } from './utils.js';
+import {
+  forceEnglishUrl,
+  isChallengePage,
+  normalizeImdbTitleType,
+  waitForImdbPath,
+  waitForImdbSearchReady,
+} from './utils.js';
 
 /**
  * Search IMDb via the public search page and parse Next.js payload first.
@@ -27,12 +33,19 @@ cli({
     const url = forceEnglishUrl(`https://www.imdb.com/find/?q=${encodeURIComponent(query)}&ref_=nv_sr_sm`);
 
     await page.goto(url);
-    await page.wait(3);
+    const onSearchPage = await waitForImdbPath(page, '^/find/?$');
+    const searchReady = await waitForImdbSearchReady(page, 15000);
 
     if (await isChallengePage(page)) {
       throw new CommandExecutionError(
         'IMDb blocked this request',
         'Try again with a normal browser session or extension mode',
+      );
+    }
+    if (!onSearchPage || !searchReady) {
+      throw new CommandExecutionError(
+        'IMDb search results did not finish loading',
+        'Retry the command; if it persists, the search page structure may have changed',
       );
     }
 
@@ -59,12 +72,25 @@ cli({
                 var tr = titleResults[i] || {};
                 var tItem = tr.listItem || {};
                 var tId = tr.index || '';
-                var tGenres = Array.isArray(tItem.genres) ? tItem.genres.join(', ') : '';
+                var tTitle = typeof tItem.originalTitleText === 'string'
+                  ? tItem.originalTitleText
+                  : (tItem.originalTitleText && tItem.originalTitleText.text) || '';
+                if (!tTitle) {
+                  tTitle = typeof tItem.titleText === 'string'
+                    ? tItem.titleText
+                    : (tItem.titleText && tItem.titleText.text) || '';
+                }
+                var tYear = '';
+                if (typeof tItem.releaseYear === 'number' || typeof tItem.releaseYear === 'string') {
+                  tYear = String(tItem.releaseYear);
+                } else if (tItem.releaseYear && typeof tItem.releaseYear === 'object') {
+                  tYear = String(tItem.releaseYear.year || '');
+                }
                 pushResult({
                   id: tId,
-                  title: tItem.originalTitleText || tItem.titleText || '',
-                  year: tItem.releaseYear ? String(tItem.releaseYear) : '',
-                  type: (tItem.titleType && typeof tItem.titleType === 'object' ? tItem.titleType.text || '' : tItem.titleType) || (tItem.endYear != null ? 'TV Series' : ''),
+                  title: tTitle,
+                  year: tYear,
+                  type: tItem.titleType || (tItem.endYear != null ? 'tvSeries' : ''),
                   url: tId ? 'https://www.imdb.com/title/' + tId + '/' : ''
                 });
               }
@@ -74,11 +100,27 @@ cli({
                 var nr = nameResults[j] || {};
                 var nItem = nr.listItem || {};
                 var nId = nr.index || '';
+                var nTitle = typeof nItem.nameText === 'string'
+                  ? nItem.nameText
+                  : (nItem.nameText && nItem.nameText.text) || '';
+                if (!nTitle) {
+                  nTitle = typeof nItem.originalNameText === 'string'
+                    ? nItem.originalNameText
+                    : (nItem.originalNameText && nItem.originalNameText.text) || '';
+                }
+                var nType = '';
+                if (typeof nItem.primaryProfession === 'string') {
+                  nType = nItem.primaryProfession;
+                } else if (Array.isArray(nItem.primaryProfessions) && nItem.primaryProfessions.length > 0) {
+                  nType = String(nItem.primaryProfessions[0] || '');
+                } else if (Array.isArray(nItem.professions) && nItem.professions.length > 0) {
+                  nType = String(nItem.professions[0] || '');
+                }
                 pushResult({
                   id: nId,
-                  title: nItem.nameText || nItem.originalNameText || '',
-                  year: nItem.knownForTitleYear ? String(nItem.knownForTitleYear) : '',
-                  type: nItem.primaryProfession || 'Person',
+                  title: nTitle,
+                  year: nItem.knownFor && nItem.knownFor.yearRange ? String(nItem.knownFor.yearRange.year || '') : (nItem.knownForTitleYear ? String(nItem.knownForTitleYear) : ''),
+                  type: nType || 'Person',
                   url: nId ? 'https://www.imdb.com/name/' + nId + '/' : ''
                 });
               }
@@ -130,7 +172,7 @@ cli({
       id: item.id || '',
       title: item.title || '',
       year: item.year || '',
-      type: item.type || '',
+      type: normalizeImdbTitleType(item.type),
       url: item.url || '',
     }));
   },

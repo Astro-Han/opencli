@@ -4,8 +4,10 @@ import {
   extractJsonLd,
   forceEnglishUrl,
   formatDuration,
+  getCurrentImdbId,
   isChallengePage,
   normalizeImdbId,
+  waitForImdbPath,
 } from './utils.js';
 
 /**
@@ -27,12 +29,26 @@ cli({
     const url = forceEnglishUrl(`https://www.imdb.com/title/${id}/`);
 
     await page.goto(url);
-    await page.wait(2);
+    const onTitlePage = await waitForImdbPath(page, `^/title/${id}/`);
 
     if (await isChallengePage(page)) {
       throw new CommandExecutionError(
         'IMDb blocked this request',
         'Try again with a normal browser session or extension mode',
+      );
+    }
+    if (!onTitlePage) {
+      throw new CommandExecutionError(
+        `Title page did not finish loading: ${id}`,
+        'Retry the command; if it persists, IMDb may have changed their navigation flow',
+      );
+    }
+
+    const currentId = await getCurrentImdbId(page, 'tt');
+    if (currentId && currentId !== id) {
+      throw new CommandExecutionError(
+        `IMDb redirected to a different title: ${currentId}`,
+        'Retry the command; if it persists, the title page may have changed',
       );
     }
 
