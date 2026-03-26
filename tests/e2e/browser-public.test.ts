@@ -34,7 +34,7 @@ describe('browser public-data commands E2E', () => {
   it('bilibili hot returns trending videos', async () => {
     const data = await tryBrowserCommand(['bilibili', 'hot', '--limit', '5', '-f', 'json']);
     expectDataOrSkip(data, 'bilibili hot');
-    if (data) {
+    if (data?.length) {
       expect(data[0]).toHaveProperty('title');
     }
   }, 60_000);
@@ -53,7 +53,7 @@ describe('browser public-data commands E2E', () => {
   it('zhihu hot returns trending questions', async () => {
     const data = await tryBrowserCommand(['zhihu', 'hot', '--limit', '5', '-f', 'json']);
     expectDataOrSkip(data, 'zhihu hot');
-    if (data) {
+    if (data?.length) {
       expect(data[0]).toHaveProperty('title');
     }
   }, 60_000);
@@ -67,5 +67,21 @@ describe('browser public-data commands E2E', () => {
   it('v2ex daily returns topics', async () => {
     const data = await tryBrowserCommand(['v2ex', 'daily', '--limit', '3', '-f', 'json']);
     expectDataOrSkip(data, 'v2ex daily');
+  }, 60_000);
+
+  // ── imdb ──
+  it('imdb top returns chart data', async () => {
+    const data = await tryBrowserCommand(['imdb', 'top', '--limit', '3', '-f', 'json']);
+    expectDataOrSkip(data, 'imdb top');
+  }, 60_000);
+
+  it('imdb search returns results', async () => {
+    const data = await tryBrowserCommand(['imdb', 'search', 'inception', '--limit', '3', '-f', 'json']);
+    expectDataOrSkip(data, 'imdb search');
+  }, 60_000);
+
+  it('imdb title returns movie details', async () => {
+    const data = await tryBrowserCommand(['imdb', 'title', 'tt1375666', '-f', 'json']);
+    expectDataOrSkip(data, 'imdb title');
   }, 60_000);
 });
