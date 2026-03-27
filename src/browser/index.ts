@@ -15,6 +15,7 @@ export type { DomSnapshotOptions } from './dom-snapshot.js';
 
 import { extractTabEntries, diffTabIndexes, appendLimited } from './tabs.js';
 import { __test__ as cdpTest } from './cdp.js';
+import { isRetryableSettleError } from './page.js';
 import { withTimeoutMs } from '../runtime.js';
 
 export const __test__ = {
@@ -24,4 +25,5 @@ export const __test__ = {
   withTimeoutMs,
   selectCDPTarget: cdpTest.selectCDPTarget,
   scoreCDPTarget: cdpTest.scoreCDPTarget,
+  isRetryableSettleError,
 };

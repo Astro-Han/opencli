@@ -45,6 +45,12 @@ describe('browser helpers', () => {
     await expect(__test__.withTimeoutMs(new Promise(() => {}), 10, 'timeout')).rejects.toThrow('timeout');
   });
 
+  it('retries settle only for target-invalidated errors', () => {
+    expect(__test__.isRetryableSettleError(new Error('{"code":-32000,"message":"Inspected target navigated or closed"}'))).toBe(true);
+    expect(__test__.isRetryableSettleError(new Error('attach failed: target no longer exists'))).toBe(false);
+    expect(__test__.isRetryableSettleError(new Error('malformed exec payload'))).toBe(false);
+  });
+
   it('prefers the real Electron app target over DevTools and blank pages', () => {
     const target = __test__.selectCDPTarget([
       {
