@@ -1,6 +1,7 @@
 const DAEMON_PORT = 19825;
 const DAEMON_HOST = "localhost";
 const DAEMON_WS_URL = `ws://${DAEMON_HOST}:${DAEMON_PORT}/ext`;
+const DAEMON_HTTP_URL = `http://${DAEMON_HOST}:${DAEMON_PORT}`;
 const WS_RECONNECT_BASE_DELAY = 2e3;
 const WS_RECONNECT_MAX_DELAY = 6e4;
 
@@ -192,7 +193,7 @@ function scheduleReconnect() {
   const delay = Math.min(WS_RECONNECT_BASE_DELAY * Math.pow(2, reconnectAttempts - 1), WS_RECONNECT_MAX_DELAY);
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
-    connect();
+    probeAndConnect();
   }, delay);
 }
 const automationSessions = /* @__PURE__ */ new Map();
@@ -254,13 +255,22 @@ chrome.windows.onRemoved.addListener((windowId) => {
     }
   }
 });
+async function probeAndConnect() {
+  if (ws?.readyState === WebSocket.OPEN || ws?.readyState === WebSocket.CONNECTING) return;
+  try {
+    await fetch(DAEMON_HTTP_URL, { method: "HEAD", signal: AbortSignal.timeout(2e3) });
+  } catch {
+    return;
+  }
+  connect();
+}
 let initialized = false;
 function initialize() {
   if (initialized) return;
   initialized = true;
   chrome.alarms.create("keepalive", { periodInMinutes: 0.4 });
   registerListeners();
-  connect();
+  probeAndConnect();
   console.log("[opencli] OpenCLI extension initialized");
 }
 chrome.runtime.onInstalled.addListener(() => {
@@ -270,7 +280,7 @@ chrome.runtime.onStartup.addListener(() => {
   initialize();
 });
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === "keepalive") connect();
+  if (alarm.name === "keepalive") probeAndConnect();
 });
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === "getStatus") {

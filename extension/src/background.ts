@@ -6,7 +6,7 @@
  */
 
 import type { Command, Result } from './protocol';
-import { DAEMON_WS_URL, WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY } from './protocol';
+import { DAEMON_WS_URL, DAEMON_HTTP_URL, WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY } from './protocol';
 import * as executor from './cdp';
 
 let ws: WebSocket | null = null;
@@ -90,7 +90,7 @@ function scheduleReconnect(): void {
   const delay = Math.min(WS_RECONNECT_BASE_DELAY * Math.pow(2, reconnectAttempts - 1), WS_RECONNECT_MAX_DELAY);
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
-    connect();
+    probeAndConnect();
   }, delay);
 }
 
@@ -178,6 +178,23 @@ chrome.windows.onRemoved.addListener((windowId) => {
   }
 });
 
+// ─── Daemon probe ────────────────────────────────────────────────────
+
+/**
+ * Probe daemon via HTTP before attempting WebSocket connection.
+ * fetch() failures are silently catchable, unlike new WebSocket() which
+ * logs an uncatchable ERR_CONNECTION_REFUSED to the extensions error page.
+ */
+async function probeAndConnect(): Promise<void> {
+  if (ws?.readyState === WebSocket.OPEN || ws?.readyState === WebSocket.CONNECTING) return;
+  try {
+    await fetch(DAEMON_HTTP_URL, { method: 'HEAD', signal: AbortSignal.timeout(2000) });
+  } catch {
+    return; // daemon not running, skip connect to avoid console noise
+  }
+  connect();
+}
+
 // ─── Lifecycle events ────────────────────────────────────────────────
 
 let initialized = false;
@@ -187,7 +204,7 @@ function initialize(): void {
   initialized = true;
   chrome.alarms.create('keepalive', { periodInMinutes: 0.4 }); // ~24 seconds
   executor.registerListeners();
-  connect();
+  probeAndConnect();
   console.log('[opencli] OpenCLI extension initialized');
 }
 
@@ -200,7 +217,7 @@ chrome.runtime.onStartup.addListener(() => {
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === 'keepalive') connect();
+  if (alarm.name === 'keepalive') probeAndConnect();
 });
 
 // ─── Popup status API ───────────────────────────────────────────────
