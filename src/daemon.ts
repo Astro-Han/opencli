@@ -108,6 +108,10 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   // Health-check endpoint — no X-OpenCLI header required.
   // Used by the extension to silently probe daemon reachability before
   // attempting a WebSocket connection (avoids uncatchable ERR_CONNECTION_REFUSED).
+  // Security note: this endpoint is reachable by any client that passes the
+  // origin check above (chrome-extension:// or no Origin header, e.g. curl).
+  // Timing side-channels can reveal daemon presence to local processes, which
+  // is an accepted risk given the daemon is loopback-only and short-lived.
   if (req.method === 'GET' && pathname === '/ping') {
     jsonResponse(res, 200, { ok: true });
     return;

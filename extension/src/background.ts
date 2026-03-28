@@ -6,7 +6,7 @@
  */
 
 import type { Command, Result } from './protocol';
-import { DAEMON_WS_URL, DAEMON_HOST, DAEMON_PORT, WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY } from './protocol';
+import { DAEMON_WS_URL, DAEMON_PING_URL, WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY } from './protocol';
 import * as executor from './cdp';
 
 let ws: WebSocket | null = null;
@@ -34,8 +34,6 @@ console.error = (...args: unknown[]) => { _origError(...args); forwardLog('error
 
 // ─── WebSocket connection ────────────────────────────────────────────
 
-const DAEMON_PING_URL = `http://${DAEMON_HOST}:${DAEMON_PORT}/ping`;
-
 /**
  * Probe the daemon via its /ping HTTP endpoint before attempting a WebSocket
  * connection.  fetch() failures are silently catchable; new WebSocket() is not
@@ -47,7 +45,8 @@ async function connect(): Promise<void> {
   if (ws?.readyState === WebSocket.OPEN || ws?.readyState === WebSocket.CONNECTING) return;
 
   try {
-    await fetch(DAEMON_PING_URL, { signal: AbortSignal.timeout(1000) });
+    const res = await fetch(DAEMON_PING_URL, { signal: AbortSignal.timeout(1000) });
+    if (!res.ok) return; // unexpected response — not our daemon
   } catch {
     return; // daemon not running — skip WebSocket to avoid console noise
   }
@@ -105,7 +104,7 @@ function scheduleReconnect(): void {
   const delay = Math.min(WS_RECONNECT_BASE_DELAY * Math.pow(2, reconnectAttempts - 1), WS_RECONNECT_MAX_DELAY);
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
-    connect();
+    void connect();
   }, delay);
 }
 
@@ -202,7 +201,7 @@ function initialize(): void {
   initialized = true;
   chrome.alarms.create('keepalive', { periodInMinutes: 0.4 }); // ~24 seconds
   executor.registerListeners();
-  connect();
+  void connect();
   console.log('[opencli] OpenCLI extension initialized');
 }
 
@@ -215,7 +214,7 @@ chrome.runtime.onStartup.addListener(() => {
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === 'keepalive') connect();
+  if (alarm.name === 'keepalive') void connect();
 });
 
 // ─── Popup status API ───────────────────────────────────────────────
