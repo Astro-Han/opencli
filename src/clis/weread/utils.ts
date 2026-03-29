@@ -95,6 +95,7 @@ function buildShelfSnapshotPollScript(storageKeys: WebShelfStorageKeys, requireT
         ? Array.from(new Set(items.map((item) => String(item?.bookId || '').trim()).filter(Boolean)))
         : [];
 
+      // Mirror of getTrustedIndexedBookIds in Node.js — keep in sync
       const hasTrustedIndexes = (rawBooks, shelfIndexes) => {
         const rawBookIds = collectBookIds(rawBooks);
         if (rawBookIds.length === 0) return false;
@@ -228,6 +229,7 @@ function getUniqueRawBookIds(snapshot: WebShelfSnapshot): string[] {
   ));
 }
 
+/** Mirror of hasTrustedIndexes in buildShelfSnapshotPollScript — keep in sync */
 function getTrustedIndexedBookIds(snapshot: WebShelfSnapshot): string[] {
   const rawBookIds = getUniqueRawBookIds(snapshot);
   if (rawBookIds.length === 0) return [];
@@ -273,24 +275,36 @@ export function buildWebShelfEntries(snapshot: WebShelfSnapshot, readerUrls: str
 }
 
 /**
- * Read the structured shelf cache from the WeRead shelf page.
- * The page hydrates localStorage asynchronously, so we poll briefly before
- * giving up and treating the cache as unavailable for the current session.
+ * Internal: load shelf snapshot and return the currentVid alongside it,
+ * so callers like resolveShelfReaderUrl can reuse it without a second getCookies.
  */
-export async function loadWebShelfSnapshot(page: IPage): Promise<WebShelfSnapshot> {
+async function loadWebShelfSnapshotWithVid(page: IPage): Promise<{ snapshot: WebShelfSnapshot; currentVid: string }> {
   await page.goto(WEREAD_SHELF_URL);
 
   const cookies = await page.getCookies({ domain: WEREAD_DOMAIN });
   const currentVid = getCurrentVid(cookies);
 
   if (!currentVid) {
-    return { cacheFound: false, rawBooks: [], shelfIndexes: [] };
+    return { snapshot: { cacheFound: false, rawBooks: [], shelfIndexes: [] }, currentVid: '' };
   }
 
   const result = await page.evaluate(
     buildShelfSnapshotPollScript(getWebShelfStorageKeys(currentVid), false),
   );
-  return normalizeWebShelfSnapshot(result as Partial<WebShelfSnapshot> | null | undefined);
+  return {
+    snapshot: normalizeWebShelfSnapshot(result as Partial<WebShelfSnapshot> | null | undefined),
+    currentVid,
+  };
+}
+
+/**
+ * Read the structured shelf cache from the WeRead shelf page.
+ * The page hydrates localStorage asynchronously, so we poll briefly before
+ * giving up and treating the cache as unavailable for the current session.
+ */
+export async function loadWebShelfSnapshot(page: IPage): Promise<WebShelfSnapshot> {
+  const { snapshot } = await loadWebShelfSnapshotWithVid(page);
+  return snapshot;
 }
 
 /**
@@ -298,13 +312,12 @@ export async function loadWebShelfSnapshot(page: IPage): Promise<WebShelfSnapsho
  * the first rawBooks cache hydration. Keep the fast shelf fallback path separate
  * and only wait here, with a bounded poll, when resolving reader URLs.
  */
-async function waitForTrustedWebShelfSnapshot(page: IPage, snapshot: WebShelfSnapshot): Promise<WebShelfSnapshot> {
-  if (!snapshot.cacheFound || getTrustedIndexedBookIds(snapshot).length > 0) {
-    return snapshot;
-  }
+async function waitForTrustedWebShelfSnapshot(page: IPage, snapshot: WebShelfSnapshot, currentVid: string): Promise<WebShelfSnapshot> {
+  // Cache not available; nothing to wait for
+  if (!snapshot.cacheFound) return snapshot;
+  // Indexes already fully cover rawBooks; no need to re-poll
+  if (getTrustedIndexedBookIds(snapshot).length > 0) return snapshot;
 
-  const cookies = await page.getCookies({ domain: WEREAD_DOMAIN });
-  const currentVid = getCurrentVid(cookies);
   if (!currentVid) return snapshot;
 
   const result = await page.evaluate(
@@ -318,8 +331,8 @@ async function waitForTrustedWebShelfSnapshot(page: IPage, snapshot: WebShelfSna
  * shelf cache order with the visible shelf links rendered on the page.
  */
 export async function resolveShelfReaderUrl(page: IPage, bookId: string): Promise<string | null> {
-  const initialSnapshot = await loadWebShelfSnapshot(page);
-  const snapshot = await waitForTrustedWebShelfSnapshot(page, initialSnapshot);
+  const { snapshot: initialSnapshot, currentVid } = await loadWebShelfSnapshotWithVid(page);
+  const snapshot = await waitForTrustedWebShelfSnapshot(page, initialSnapshot, currentVid);
   if (!snapshot.cacheFound) return null;
   const trustedIndexedBookIds = getTrustedIndexedBookIds(snapshot);
   if (trustedIndexedBookIds.length === 0) return null;

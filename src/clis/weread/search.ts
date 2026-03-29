@@ -10,9 +10,10 @@ interface SearchHtmlEntry {
 function decodeHtmlText(value: string): string {
   return value
     .replace(/<[^>]+>/g, '')
+    .replace(/&#x([0-9a-fA-F]+);/gi, (_, n) => String.fromCharCode(parseInt(n, 16)))
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
-    .replace(/&#39;/g, "'")
     .replace(/&quot;/g, '"')
     .trim();
 }
@@ -163,9 +164,11 @@ cli({
   ],
   columns: ['rank', 'title', 'author', 'bookId', 'url'],
   func: async (_page, args) => {
-    const data = await fetchWebApi('/search/global', { keyword: args.query });
+    const [data, htmlEntries] = await Promise.all([
+      fetchWebApi('/search/global', { keyword: args.query }),
+      loadSearchHtmlEntries(String(args.query ?? '')),
+    ]);
     const books: any[] = data?.books ?? [];
-    const htmlEntries = await loadSearchHtmlEntries(String(args.query ?? ''));
     const { exactQueues, titleOnlyQueues } = buildSearchUrlQueues(htmlEntries);
     const apiIdentityCounts = countSearchIdentities(
       books.map((item: any) => ({
