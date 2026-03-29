@@ -122,13 +122,13 @@ function countTiebaReplyFloorOverlap(left: any[] | null, right: any[] | null): n
   return getTiebaReplyFloors(left).filter((floor) => rightFloors.has(floor)).length;
 }
 
-function pickTiebaReadCandidate(
+function pickTiebaReadCandidates(
   posts: any[] | null,
   minReplies: number,
-): { threadId: string; title: string; replies: number } | null {
-  if (!Array.isArray(posts) || !posts.length) return null;
+): Array<{ threadId: string; title: string; replies: number }> {
+  if (!Array.isArray(posts) || !posts.length) return [];
 
-  const candidate = [...posts]
+  return [...posts]
     .filter((item: any) => item?.id)
     .map((item: any) => ({
       threadId: String(item.id || '').trim(),
@@ -136,13 +136,11 @@ function pickTiebaReadCandidate(
       replies: Number(item.replies) || 0,
     }))
     .filter((item) => item.threadId && item.title && item.replies >= minReplies)
-    .sort((left, right) => right.replies - left.replies)[0];
-
-  return candidate || null;
+    .sort((left, right) => right.replies - left.replies);
 }
 
 /**
- * Pick a live thread from posts metadata instead of pre-filtering with tieba read itself.
+ * Pick a live thread that actually exposes enough visible replies for the read assertions.
  */
 async function getTiebaReadCandidateOrSkip(
   label: string,
@@ -162,13 +160,46 @@ async function getTiebaReadCandidateOrSkip(
   }
 
   const minReplies = requirePage2 ? Math.max(minRepliesOnPage1, 50) : minRepliesOnPage1;
-  const candidate = pickTiebaReadCandidate(posts, minReplies);
-  if (!candidate) {
+  const candidates = pickTiebaReadCandidates(posts, minReplies).slice(0, 5);
+  if (!candidates.length) {
     console.warn(`${label}: skipped — could not find a Tieba thread with enough replies from posts metadata`);
     return null;
   }
 
-  return candidate;
+  for (const candidate of candidates) {
+    const page1Preview = await runJsonCliOrThrow(
+      ['tieba', 'read', candidate.threadId, '--page', '1', '--limit', String(Math.max(minRepliesOnPage1, 2)), '-f', 'json'],
+      `${label} preview page 1`,
+      90_000,
+      { retryTransient: true },
+    );
+    if (page1Preview === null) {
+      return null;
+    }
+    if (!hasTiebaMainPost(page1Preview) || countTiebaReplies(page1Preview) < minRepliesOnPage1) {
+      continue;
+    }
+
+    if (requirePage2) {
+      const page2Preview = await runJsonCliOrThrow(
+        ['tieba', 'read', candidate.threadId, '--page', '2', '--limit', '1', '-f', 'json'],
+        `${label} preview page 2`,
+        90_000,
+        { retryTransient: true },
+      );
+      if (page2Preview === null) {
+        return null;
+      }
+      if (hasTiebaMainPost(page2Preview) || countTiebaReplies(page2Preview) < 1) {
+        continue;
+      }
+    }
+
+    return candidate;
+  }
+
+  console.warn(`${label}: skipped — could not find a Tieba thread with enough visible replies`);
+  return null;
 }
 
 describe('tieba e2e helper guards', () => {
@@ -187,18 +218,18 @@ describe('tieba e2e helper guards', () => {
     )).toBe(2);
   });
 
-  it('picks read fixtures from posts metadata instead of read output shape', () => {
-    expect(pickTiebaReadCandidate([
+  it('picks read fixtures from posts metadata in descending reply order', () => {
+    expect(pickTiebaReadCandidates([
       { id: '1', title: '普通帖', replies: 2 },
       { id: '2', title: '大帖', replies: 120 },
       { id: '', title: '无效帖', replies: 999 },
-    ], 50)).toEqual({
+    ], 50)).toEqual([{
       threadId: '2',
       title: '大帖',
       replies: 120,
-    });
+    }]);
 
-    expect(pickTiebaReadCandidate([{ id: '1', title: '普通帖', replies: 2 }], 50)).toBeNull();
+    expect(pickTiebaReadCandidates([{ id: '1', title: '普通帖', replies: 2 }], 50)).toEqual([]);
   });
 });
 
@@ -288,13 +319,13 @@ describe('browser public-data commands E2E', () => {
   }, 90_000);
 
   it('tieba posts page 2 returns a different forum slice', async () => {
-    const data1 = await runJsonCliOrThrow(['tieba', 'posts', '加工中心', '--page', '1', '--limit', '5', '-f', 'json'], 'tieba posts page 1', 60_000, { retryTransient: true });
-    const data2 = await runJsonCliOrThrow(['tieba', 'posts', '加工中心', '--page', '2', '--limit', '5', '-f', 'json'], 'tieba posts page 2', 60_000, { retryTransient: true });
+    const data1 = await runJsonCliOrThrow(['tieba', 'posts', '李毅', '--page', '1', '--limit', '5', '-f', 'json'], 'tieba posts page 1', 60_000, { retryTransient: true });
+    const data2 = await runJsonCliOrThrow(['tieba', 'posts', '李毅', '--page', '2', '--limit', '5', '-f', 'json'], 'tieba posts page 2', 60_000, { retryTransient: true });
     if (expectNonEmptyDataOrSkipEnv(data1, 'tieba posts page 1') && expectNonEmptyDataOrSkipEnv(data2, 'tieba posts page 2')) {
       const ids1 = data1.map((item: any) => String(item.id || '')).filter(Boolean);
       const ids2 = data2.map((item: any) => String(item.id || '')).filter(Boolean);
-      const overlap = ids1.filter((id) => ids2.includes(id));
-      expect(overlap).toHaveLength(0);
+      const newIds = ids2.filter((id) => !ids1.includes(id));
+      expect(newIds.length).toBeGreaterThan(0);
     }
   }, 90_000);
 

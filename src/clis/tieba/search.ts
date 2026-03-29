@@ -9,11 +9,28 @@ const MAX_SUPPORTED_PAGE = '1';
  */
 function buildExtractSearchResultsEvaluate(limit: number): string {
   return `
-    (() => {
+    (async () => {
+      const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const waitFor = async (predicate, timeoutMs = 5000) => {
+        const start = Date.now();
+        while (Date.now() - start < timeoutMs) {
+          if (predicate()) return true;
+          await wait(100);
+        }
+        return false;
+      };
       const getVueProps = (element) => {
         const vue = element && element.__vue__ ? element.__vue__ : null;
         return vue ? (vue._props || vue.$props || {}) : {};
       };
+      await waitFor(() => {
+        const bodyText = document.body?.innerText || '';
+        return Boolean(
+          document.querySelector('.threadcardclass.thread-new3.index-feed-cards')
+          || document.querySelector('.search-no-result, .search-nodata, .no-result')
+          || /百度安全验证|安全验证|请完成验证/.test(bodyText)
+        );
+      });
       const items = document.querySelectorAll('.threadcardclass.thread-new3.index-feed-cards');
       return Array.from(items).slice(0, ${limit}).map((item) => {
         const forum = item.querySelector('.forum-name-text, .forum-name')?.textContent?.trim() || '';
