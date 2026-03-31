@@ -22,8 +22,6 @@ const DRAFT_UPLOAD_URL = 'https://creator.douyin.com/creator-micro/content/uploa
 const COMPOSER_WAIT_ATTEMPTS = 120;
 const COVER_INPUT_WAIT_ATTEMPTS = 20;
 const COVER_READY_WAIT_ATTEMPTS = 20;
-const COVER_READY_STABLE_POLLS = 2;
-const COVER_READY_IDLE_POLLS_WITHOUT_BUSY = 3;
 
 interface DraftComposerState {
   href: string;
@@ -208,43 +206,31 @@ async function prepareCustomCoverInput(page: IPage): Promise<string> {
 }
 
 /**
- * Wait until the custom-cover upload stops showing loading text before saving.
+ * Wait for Douyin's cover-detection pipeline to expose a post-upload signal.
+ * In the live creator page, custom cover upload first shows `封面检测中`, then
+ * lands on a ready state such as `重新检测` or the warning copy for missing
+ * horizontal/vertical covers.
  */
-async function waitForCoverReady(page: IPage): Promise<void> {
+async function waitForCoverReady(
+  page: IPage,
+  initialBodyText: string,
+): Promise<void> {
   let lastBodyText = '';
-  let sawBusy = false;
-  let stableIdlePolls = 0;
 
   for (let attempt = 0; attempt < COVER_READY_WAIT_ATTEMPTS; attempt += 1) {
-    const state = (await page.evaluate(`() => {
-      const bodyText = document.body?.innerText || '';
-      const titleReady = !!Array.from(document.querySelectorAll('input')).find(
-        (el) => (el.placeholder || '').includes('填写作品标题')
-      );
-      const coverBusy = /(封面处理中|封面上传中|上传封面中|正在上传封面|正在处理封面)/.test(bodyText);
-      return {
-        titleReady,
-        coverBusy,
-        bodyText,
-      };
-    }`)) as { titleReady: boolean; coverBusy: boolean; bodyText: string };
+    const bodyText = (await page.evaluate(
+      `() => document.body?.innerText || ''`,
+    )) as string;
 
-    if (state.coverBusy) {
-      sawBusy = true;
-      stableIdlePolls = 0;
-    } else if (state.titleReady) {
-      stableIdlePolls += 1;
-      const requiredIdlePolls = sawBusy
-        ? COVER_READY_STABLE_POLLS
-        : COVER_READY_IDLE_POLLS_WITHOUT_BUSY;
-      if (stableIdlePolls >= requiredIdlePolls) {
-        return;
-      }
-    } else {
-      stableIdlePolls = 0;
+    const hasReadySignal = (
+      /重新检测|横\/竖双封面缺失/.test(bodyText)
+      && !/重新检测|横\/竖双封面缺失/.test(initialBodyText)
+    );
+    if (hasReadySignal) {
+      return;
     }
 
-    lastBodyText = state.bodyText;
+    lastBodyText = bodyText;
     await page.wait({ time: 0.5 });
   }
 
@@ -410,8 +396,11 @@ cli({
     await dismissKnownModals(page);
     if (coverPath) {
       const coverSelector = await prepareCustomCoverInput(page);
+      const initialBodyText = (await page.evaluate(
+        `() => document.body?.innerText || ''`,
+      )) as string;
       await page.setFileInput([path.resolve(coverPath)], coverSelector);
-      await waitForCoverReady(page);
+      await waitForCoverReady(page, initialBodyText);
     }
     await fillDraftComposer(page, { title, caption, visibilityLabel });
     await page.wait({ time: 1 });

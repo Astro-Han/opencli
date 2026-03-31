@@ -212,9 +212,9 @@ describe('douyin draft registration', () => {
         1,
         { ok: false, reason: 'cover-input-pending' },
         { ok: true, selector: '[data-opencli-cover-input="1"]' },
-        { titleReady: true, coverBusy: true, bodyText: '封面处理中' },
-        { titleReady: true, coverBusy: false, bodyText: '上传新封面' },
-        { titleReady: true, coverBusy: false, bodyText: '上传新封面' },
+        '点击上传新的视频封面',
+        '封面检测中',
+        '重新检测',
         true,
         true,
         { ok: true, text: '暂存离开', creationId: 'creation-002' },
@@ -238,7 +238,7 @@ describe('douyin draft registration', () => {
     const shortWaitCalls = (page.wait as ReturnType<typeof vi.fn>).mock.calls.filter(
       ([arg]) => JSON.stringify(arg) === JSON.stringify({ time: 0.5 }),
     );
-    expect(shortWaitCalls).toHaveLength(3);
+    expect(shortWaitCalls).toHaveLength(2);
 
     const evaluateCalls = (page.evaluate as ReturnType<typeof vi.fn>).mock.calls.map(
       (args: unknown[]) => String(args[0]),
@@ -258,7 +258,7 @@ describe('douyin draft registration', () => {
     ]);
   });
 
-  it('waits for the cover state to stay idle even when busy appears after the first poll', async () => {
+  it('waits for a late cover-section update before treating the custom cover as ready', async () => {
     const registry = getRegistry();
     const cmd = [...registry.values()].find(c => c.site === 'douyin' && c.name === 'draft');
     expect(cmd?.func).toBeTypeOf('function');
@@ -277,10 +277,12 @@ describe('douyin draft registration', () => {
         undefined,
         1,
         { ok: true, selector: '[data-opencli-cover-input="1"]' },
-        { titleReady: true, coverBusy: false, bodyText: '上传新封面' },
-        { titleReady: true, coverBusy: true, bodyText: '封面处理中' },
-        { titleReady: true, coverBusy: false, bodyText: '上传新封面' },
-        { titleReady: true, coverBusy: false, bodyText: '上传新封面' },
+        '点击上传新的视频封面',
+        '点击上传新的视频封面',
+        '点击上传新的视频封面',
+        '点击上传新的视频封面',
+        '封面检测中',
+        '重新检测',
         true,
         true,
         { ok: true, text: '暂存离开', creationId: 'creation-cover-race' },
@@ -308,6 +310,6 @@ describe('douyin draft registration', () => {
     const shortWaitCalls = (page.wait as ReturnType<typeof vi.fn>).mock.calls.filter(
       ([arg]) => JSON.stringify(arg) === JSON.stringify({ time: 0.5 }),
     );
-    expect(shortWaitCalls).toHaveLength(3);
+    expect(shortWaitCalls).toHaveLength(4);
   });
 });
