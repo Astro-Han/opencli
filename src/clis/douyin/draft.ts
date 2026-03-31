@@ -213,20 +213,21 @@ async function prepareCustomCoverInput(page: IPage): Promise<string> {
  */
 async function waitForCoverReady(
   page: IPage,
-  initialBodyText: string,
 ): Promise<void> {
   let lastBodyText = '';
+  let sawBusy = false;
 
   for (let attempt = 0; attempt < COVER_READY_WAIT_ATTEMPTS; attempt += 1) {
     const bodyText = (await page.evaluate(
       `() => document.body?.innerText || ''`,
     )) as string;
+    const busy = /封面检测中/.test(bodyText);
+    const ready = /重新检测|横\/竖双封面缺失/.test(bodyText);
 
-    const hasReadySignal = (
-      /重新检测|横\/竖双封面缺失/.test(bodyText)
-      && !/重新检测|横\/竖双封面缺失/.test(initialBodyText)
-    );
-    if (hasReadySignal) {
+    if (busy) {
+      sawBusy = true;
+    }
+    if (sawBusy && ready && !busy) {
       return;
     }
 
@@ -396,11 +397,8 @@ cli({
     await dismissKnownModals(page);
     if (coverPath) {
       const coverSelector = await prepareCustomCoverInput(page);
-      const initialBodyText = (await page.evaluate(
-        `() => document.body?.innerText || ''`,
-      )) as string;
       await page.setFileInput([path.resolve(coverPath)], coverSelector);
-      await waitForCoverReady(page, initialBodyText);
+      await waitForCoverReady(page);
     }
     await fillDraftComposer(page, { title, caption, visibilityLabel });
     await page.wait({ time: 1 });
