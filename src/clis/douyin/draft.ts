@@ -211,7 +211,7 @@ async function prepareCustomCoverInput(page: IPage): Promise<string> {
 export function buildCoverCheckPanelTextJs(): string {
   return `() => {
     const normalize = (value) => (value || '').replace(/\\s+/g, ' ').trim();
-    const stateTexts = ['检测', '检测中', '重新检测', '横/竖双封面缺失'];
+    const stateTexts = ['检测', '检测中', '封面检测中', '重新检测', '横/竖双封面缺失'];
     const marker = Array.from(document.querySelectorAll('div,span,p,button')).find(
       (el) => normalize(el.textContent) === '快速检测'
     );

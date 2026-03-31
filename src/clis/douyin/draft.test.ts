@@ -125,6 +125,30 @@ describe('douyin draft registration', () => {
     }
   });
 
+  it('extracts the quick-check panel when busy state is rendered as a single 封面检测中 node', () => {
+    const marker = createFakeTree('快速检测');
+    const busy = createFakeTree('封面检测中');
+    const header = createFakeTree('快速检测', [marker]);
+    const status = createFakeTree('封面检测中', [busy]);
+    const panel = createFakeTree('快速检测封面检测中', [header, status]);
+    const body = createFakeTree('body', [panel]);
+
+    const g = globalThis as unknown as {
+      document?: { body: FakeNode; querySelectorAll: (_selector: string) => FakeNode[] };
+    };
+    const originalDocument = g.document;
+    g.document = {
+      body,
+      querySelectorAll: () => [marker, busy],
+    };
+
+    try {
+      expect((eval(buildCoverCheckPanelTextJs()) as () => string)()).toBe('快速检测封面检测中');
+    } finally {
+      g.document = originalDocument;
+    }
+  });
+
   it('uploads through the official creator draft page and saves the draft session', async () => {
     const registry = getRegistry();
     const cmd = [...registry.values()].find(c => c.site === 'douyin' && c.name === 'draft');
