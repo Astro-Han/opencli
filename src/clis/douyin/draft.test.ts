@@ -7,7 +7,32 @@ import { describe, expect, it, vi } from 'vitest';
 import { wrapForEval } from '../../browser/utils.js';
 import { getRegistry } from '../../registry.js';
 import type { IPage } from '../../types.js';
-import './draft.js';
+import { buildCoverCheckPanelTextJs } from './draft.js';
+
+type FakeNode = {
+  textContent: string;
+  parentElement: FakeNode | null;
+  querySelectorAll: (_selector: string) => FakeNode[];
+};
+
+function createFakeTree(text: string, children: FakeNode[] = []): FakeNode {
+  const node: FakeNode = {
+    textContent: text,
+    parentElement: null,
+    querySelectorAll: () => [],
+  };
+  node.querySelectorAll = () => {
+    const descendants: FakeNode[] = [];
+    for (const child of children) {
+      descendants.push(child, ...child.querySelectorAll('*'));
+    }
+    return descendants;
+  };
+  for (const child of children) {
+    child.parentElement = node;
+  }
+  return node;
+}
 
 function createPageMock(
   evaluateResults: unknown[],
@@ -52,6 +77,52 @@ describe('douyin draft registration', () => {
     const values = [...registry.values()];
     const cmd = values.find(c => c.site === 'douyin' && c.name === 'draft');
     expect(cmd).toBeDefined();
+  });
+
+  it('extracts the higher quick-check panel instead of stopping at a header-only ancestor', () => {
+    const marker = createFakeTree('快速检测');
+    const state = createFakeTree('重新检测');
+    const header = createFakeTree('快速检测', [marker]);
+    const status = createFakeTree('重新检测', [state]);
+    const panel = createFakeTree('快速检测重新检测', [header, status]);
+    const body = createFakeTree('body', [panel]);
+
+    const g = globalThis as unknown as {
+      document?: { body: FakeNode; querySelectorAll: (_selector: string) => FakeNode[] };
+    };
+    const originalDocument = g.document;
+    g.document = {
+      body,
+      querySelectorAll: () => [marker, state],
+    };
+
+    try {
+      expect((eval(buildCoverCheckPanelTextJs()) as () => string)()).toBe('快速检测重新检测');
+    } finally {
+      g.document = originalDocument;
+    }
+  });
+
+  it('returns empty when only header text exists and no exact quick-check state node is present', () => {
+    const marker = createFakeTree('快速检测');
+    const note = createFakeTree('检测说明');
+    const header = createFakeTree('快速检测检测说明', [marker, note]);
+    const body = createFakeTree('body', [header]);
+
+    const g = globalThis as unknown as {
+      document?: { body: FakeNode; querySelectorAll: (_selector: string) => FakeNode[] };
+    };
+    const originalDocument = g.document;
+    g.document = {
+      body,
+      querySelectorAll: () => [marker, note],
+    };
+
+    try {
+      expect((eval(buildCoverCheckPanelTextJs()) as () => string)()).toBe('');
+    } finally {
+      g.document = originalDocument;
+    }
   });
 
   it('uploads through the official creator draft page and saves the draft session', async () => {

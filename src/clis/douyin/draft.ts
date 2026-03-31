@@ -208,26 +208,30 @@ async function prepareCustomCoverInput(page: IPage): Promise<string> {
 /**
  * Read the local quick-check panel text that reflects cover validation state.
  */
-async function getCoverCheckPanelText(page: IPage): Promise<string> {
-  return ((await page.evaluate(`() => {
-    const marker = Array.from(document.querySelectorAll('div,span,p')).find(
-      (el) => (el.textContent || '').trim() === '快速检测'
+export function buildCoverCheckPanelTextJs(): string {
+  return `() => {
+    const normalize = (value) => (value || '').replace(/\\s+/g, ' ').trim();
+    const stateTexts = ['检测', '检测中', '重新检测', '横/竖双封面缺失'];
+    const marker = Array.from(document.querySelectorAll('div,span,p,button')).find(
+      (el) => normalize(el.textContent) === '快速检测'
     );
     let root = marker?.parentElement || null;
     while (root && root !== document.body) {
-      const text = (root.textContent || '').replace(/\\s+/g, ' ').trim();
-      const hasCheckState = (
-        text.includes('检测中')
-        || text.includes('重新检测')
-        || text.includes('横/竖双封面缺失')
-      );
-      if (text.includes('快速检测') && hasCheckState) {
-        return text.slice(0, 400);
+      const descendants = Array.from(root.querySelectorAll('div,span,p,button'))
+        .map((el) => normalize(el.textContent));
+      const hasMarkerText = descendants.includes('快速检测');
+      const hasStateText = descendants.some((text) => stateTexts.includes(text));
+      if (hasMarkerText && hasStateText) {
+        return normalize(root.textContent).slice(0, 400);
       }
       root = root.parentElement;
     }
     return '';
-  }`)) as string) || '';
+  }`;
+}
+
+async function getCoverCheckPanelText(page: IPage): Promise<string> {
+  return ((await page.evaluate(buildCoverCheckPanelTextJs())) as string) || '';
 }
 
 /**
