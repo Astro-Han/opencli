@@ -19,6 +19,9 @@ const VISIBILITY_LABELS: Record<string, string> = {
 };
 
 const DRAFT_UPLOAD_URL = 'https://creator.douyin.com/creator-micro/content/upload';
+const COMPOSER_WAIT_ATTEMPTS = 120;
+const COVER_INPUT_WAIT_ATTEMPTS = 20;
+const COVER_READY_WAIT_ATTEMPTS = 20;
 
 interface DraftComposerState {
   href: string;
@@ -60,7 +63,7 @@ async function waitForDraftComposer(page: IPage): Promise<void> {
     bodyText: '',
   };
 
-  for (let attempt = 0; attempt < 40; attempt += 1) {
+  for (let attempt = 0; attempt < COMPOSER_WAIT_ATTEMPTS; attempt += 1) {
     lastState = (await page.evaluate(`() => ({
       href: location.href,
       ready: !!Array.from(document.querySelectorAll('input')).find(
@@ -160,31 +163,79 @@ async function fillDraftComposer(
  * stable selector for CDP file injection.
  */
 async function prepareCustomCoverInput(page: IPage): Promise<string> {
-  const result = (await page.evaluate(`() => {
-    const coverLabel = Array.from(document.querySelectorAll('label')).find(
-      (el) => (el.textContent || '').includes('上传新封面')
-    );
-    if (coverLabel instanceof HTMLElement) {
-      coverLabel.click();
+  let lastReason = 'cover-input-missing';
+  const baselineCount = (await page.evaluate(
+    `() => Array.from(document.querySelectorAll('input[type="file"]')).length`,
+  )) as number;
+
+  for (let attempt = 0; attempt < COVER_INPUT_WAIT_ATTEMPTS; attempt += 1) {
+    const result = (await page.evaluate(`() => {
+      const coverLabel = Array.from(document.querySelectorAll('label')).find(
+        (el) => (el.textContent || '').includes('上传新封面')
+      );
+      if (coverLabel instanceof HTMLElement) {
+        coverLabel.click();
+      }
+
+      const inputs = Array.from(document.querySelectorAll('input[type="file"]'));
+      const target = inputs
+        .slice(${JSON.stringify(baselineCount)})
+        .find((el) => el instanceof HTMLInputElement && !el.disabled);
+      if (!(target instanceof HTMLInputElement)) {
+        return { ok: false, reason: 'cover-input-pending' };
+      }
+
+      document
+        .querySelectorAll('[data-opencli-cover-input="1"]')
+        .forEach((el) => el.removeAttribute('data-opencli-cover-input'));
+      target.setAttribute('data-opencli-cover-input', '1');
+      return { ok: true, selector: '[data-opencli-cover-input="1"]' };
+    }`)) as { ok?: boolean; reason?: string; selector?: string };
+
+    if (result?.ok && result.selector) {
+      return result.selector;
     }
 
-    const inputs = Array.from(document.querySelectorAll('input[type="file"]'));
-    const target = inputs.at(-1);
-    if (!(target instanceof HTMLInputElement)) {
-      return { ok: false, reason: 'cover-input-missing' };
-    }
-
-    target.setAttribute('data-opencli-cover-input', '1');
-    return { ok: true, selector: '[data-opencli-cover-input="1"]' };
-  })`)) as { ok?: boolean; reason?: string; selector?: string };
-
-  if (!result?.ok || !result.selector) {
-    throw new CommandExecutionError(
-      `准备抖音自定义封面输入框失败: ${result?.reason || 'unknown'}`,
-    );
+    lastReason = result?.reason || lastReason;
+    await page.wait({ time: 0.5 });
   }
 
-  return result.selector;
+  throw new CommandExecutionError(
+    `准备抖音自定义封面输入框失败: ${lastReason}`,
+  );
+}
+
+/**
+ * Wait until the custom-cover upload stops showing loading text before saving.
+ */
+async function waitForCoverReady(page: IPage): Promise<void> {
+  let lastBodyText = '';
+
+  for (let attempt = 0; attempt < COVER_READY_WAIT_ATTEMPTS; attempt += 1) {
+    const state = (await page.evaluate(`() => {
+      const bodyText = document.body?.innerText || '';
+      const titleReady = !!Array.from(document.querySelectorAll('input')).find(
+        (el) => (el.placeholder || '').includes('填写作品标题')
+      );
+      const coverBusy = /(封面处理中|封面上传中|上传封面中|正在上传封面|正在处理封面)/.test(bodyText);
+      return {
+        ready: titleReady && !coverBusy,
+        bodyText,
+      };
+    }`)) as { ready: boolean; bodyText: string };
+
+    if (state.ready) {
+      return;
+    }
+
+    lastBodyText = state.bodyText;
+    await page.wait({ time: 0.5 });
+  }
+
+  throw new CommandExecutionError(
+    '等待抖音封面处理完成超时',
+    lastBodyText || 'unknown',
+  );
 }
 
 /**
@@ -242,10 +293,15 @@ async function clickSaveDraft(page: IPage): Promise<DraftSaveResult> {
       `点击草稿按钮失败: ${result?.reason || 'unknown'}`,
     );
   }
+  if (!result.creationId) {
+    throw new CommandExecutionError(
+      '点击草稿按钮失败: creation-id-missing',
+    );
+  }
 
   return {
     text: result.text || '暂存离开',
-    creationId: result.creationId || '',
+    creationId: result.creationId,
   };
 }
 
@@ -339,7 +395,7 @@ cli({
     if (coverPath) {
       const coverSelector = await prepareCustomCoverInput(page);
       await page.setFileInput([path.resolve(coverPath)], coverSelector);
-      await page.wait({ time: 1 });
+      await waitForCoverReady(page);
     }
     await fillDraftComposer(page, { title, caption, visibilityLabel });
     await page.wait({ time: 1 });
