@@ -1,7 +1,13 @@
 import { cli, Strategy } from '../../registry.js';
 import { CliError } from '../../errors.js';
 import type { IPage } from '../../types.js';
-import { fetchPrivateApi, resolveShelfReaderUrl } from './utils.js';
+import {
+  fetchPrivateApi,
+  fetchWebApi,
+  resolveShelfReader,
+  WEREAD_UA,
+  WEREAD_WEB_ORIGIN,
+} from './utils.js';
 
 interface ReaderFallbackResult {
   title: string;
@@ -11,6 +17,132 @@ interface ReaderFallbackResult {
   category: string;
   rating: string;
   metadataReady: boolean;
+}
+
+interface SearchHtmlEntry {
+  title: string;
+  author: string;
+  url: string;
+}
+
+function decodeHtmlText(value: string): string {
+  return value
+    .replace(/<[^>]+>/g, '')
+    .replace(/&#x([0-9a-fA-F]+);/gi, (_, n) => String.fromCharCode(parseInt(n, 16)))
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .trim();
+}
+
+function normalizeSearchText(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+function buildSearchIdentity(title: string, author: string): string {
+  return `${normalizeSearchText(title)}\u0000${normalizeSearchText(author)}`;
+}
+
+function countSearchTitles(entries: Array<{ title: string }>): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const entry of entries) {
+    const key = normalizeSearchText(entry.title);
+    if (!key) continue;
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  return counts;
+}
+
+function countSearchIdentities(entries: Array<{ title: string; author: string }>): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const entry of entries) {
+    const key = buildSearchIdentity(entry.title, entry.author);
+    if (!normalizeSearchText(entry.title) || !normalizeSearchText(entry.author)) continue;
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  return counts;
+}
+
+/**
+ * Reuse the public search page as a last-resort reader URL source when the
+ * cached shelf page cannot provide a trustworthy bookId-to-reader mapping.
+ */
+async function resolveSearchReaderUrl(title: string, author: string): Promise<string> {
+  const normalizedTitle = normalizeSearchText(title);
+  const normalizedAuthor = normalizeSearchText(author);
+  if (!normalizedTitle) return '';
+
+  try {
+    const [data, htmlEntries] = await Promise.all([
+      fetchWebApi('/search/global', { keyword: normalizedTitle }),
+      (async (): Promise<SearchHtmlEntry[]> => {
+        const url = new URL('/web/search/books', WEREAD_WEB_ORIGIN);
+        url.searchParams.set('keyword', normalizedTitle);
+
+        const resp = await fetch(url.toString(), {
+          headers: { 'User-Agent': WEREAD_UA },
+        });
+        if (!resp.ok) return [];
+
+        const html = await resp.text();
+        const items = Array.from(
+          html.matchAll(/<li[^>]*class="wr_bookList_item"[^>]*>([\s\S]*?)<\/li>/g),
+        );
+
+        return items.map((match) => {
+          const chunk = match[1];
+          const hrefMatch = chunk.match(/<a[^>]*href="([^"]+)"[^>]*class="wr_bookList_item_link"[^>]*>|<a[^>]*class="wr_bookList_item_link"[^>]*href="([^"]+)"[^>]*>/);
+          const titleMatch = chunk.match(/<p[^>]*class="wr_bookList_item_title"[^>]*>([\s\S]*?)<\/p>/);
+          const authorMatch = chunk.match(/<p[^>]*class="wr_bookList_item_author"[^>]*>([\s\S]*?)<\/p>/);
+          const href = hrefMatch?.[1] || hrefMatch?.[2] || '';
+
+          return {
+            title: decodeHtmlText(titleMatch?.[1] || ''),
+            author: decodeHtmlText(authorMatch?.[1] || ''),
+            url: href ? new URL(href, WEREAD_WEB_ORIGIN).toString() : '',
+          };
+        }).filter((entry) => entry.title && entry.url);
+      })(),
+    ]);
+
+    const books: any[] = Array.isArray(data?.books) ? data.books : [];
+    const apiIdentityCounts = countSearchIdentities(
+      books.map((item: any) => ({
+        title: item.bookInfo?.title ?? '',
+        author: item.bookInfo?.author ?? '',
+      })),
+    );
+    const htmlIdentityCounts = countSearchIdentities(
+      htmlEntries.filter((entry) => entry.author),
+    );
+    const identityKey = buildSearchIdentity(normalizedTitle, normalizedAuthor);
+    if (
+      normalizedAuthor &&
+      (apiIdentityCounts.get(identityKey) || 0) === 1 &&
+      (htmlIdentityCounts.get(identityKey) || 0) === 1
+    ) {
+      const exactMatch = htmlEntries.find((entry) => buildSearchIdentity(entry.title, entry.author) === identityKey);
+      if (exactMatch?.url) return exactMatch.url;
+    }
+
+    const sameTitleHtmlEntries = htmlEntries.filter((entry) => normalizeSearchText(entry.title) === normalizedTitle);
+    if (normalizedAuthor && sameTitleHtmlEntries.some((entry) => normalizeSearchText(entry.author))) {
+      return '';
+    }
+
+    const apiTitleCounts = countSearchTitles(
+      books.map((item: any) => ({ title: item.bookInfo?.title ?? '' })),
+    );
+    const htmlTitleCounts = countSearchTitles(htmlEntries);
+    if ((apiTitleCounts.get(normalizedTitle) || 0) !== 1 || (htmlTitleCounts.get(normalizedTitle) || 0) !== 1) {
+      return '';
+    }
+
+    return htmlEntries.find((entry) => normalizeSearchText(entry.title) === normalizedTitle)?.url || '';
+  } catch {
+    return '';
+  }
 }
 
 /**
@@ -108,7 +240,15 @@ cli({
         throw error;
       }
 
-      const readerUrl = await resolveShelfReaderUrl(page, bookId);
+      const { readerUrl: resolvedReaderUrl, snapshot } = await resolveShelfReader(page, bookId);
+      let readerUrl = resolvedReaderUrl;
+      if (!readerUrl) {
+        const cachedBook = snapshot.rawBooks.find((book) => String(book?.bookId || '').trim() === bookId);
+        readerUrl = await resolveSearchReaderUrl(
+          String(cachedBook?.title || ''),
+          String(cachedBook?.author || ''),
+        );
+      }
       if (!readerUrl) {
         throw error;
       }

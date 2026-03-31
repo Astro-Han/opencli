@@ -42,6 +42,11 @@ export interface WebShelfEntry {
   readerUrl: string;
 }
 
+export interface WebShelfReaderResolution {
+  snapshot: WebShelfSnapshot;
+  readerUrl: string | null;
+}
+
 interface WebShelfStorageKeys {
   rawBooksKey: string;
   shelfIndexesKey: string;
@@ -331,11 +336,29 @@ async function waitForTrustedWebShelfSnapshot(page: IPage, snapshot: WebShelfSna
  * shelf cache order with the visible shelf links rendered on the page.
  */
 export async function resolveShelfReaderUrl(page: IPage, bookId: string): Promise<string | null> {
+  const resolution = await resolveShelfReader(page, bookId);
+  return resolution.readerUrl;
+}
+
+/**
+ * Resolve the current reader URL for a shelf entry and return the parsed shelf
+ * snapshot used during resolution, so callers can reuse cached title/author
+ * metadata without loading the shelf page twice.
+ */
+export async function resolveShelfReader(page: IPage, bookId: string): Promise<WebShelfReaderResolution> {
   const { snapshot: initialSnapshot, currentVid } = await loadWebShelfSnapshotWithVid(page);
   const snapshot = await waitForTrustedWebShelfSnapshot(page, initialSnapshot, currentVid);
-  if (!snapshot.cacheFound) return null;
+  if (!snapshot.cacheFound) {
+    return { snapshot, readerUrl: null };
+  }
+  const rawBookIds = getUniqueRawBookIds(snapshot);
   const trustedIndexedBookIds = getTrustedIndexedBookIds(snapshot);
-  if (trustedIndexedBookIds.length === 0) return null;
+  const canUseRawOrderFallback = trustedIndexedBookIds.length === 0
+    && rawBookIds.length > 0
+    && snapshot.shelfIndexes.length === 0;
+  if (trustedIndexedBookIds.length === 0 && !canUseRawOrderFallback) {
+    return { snapshot, readerUrl: null };
+  }
 
   const readerUrls = await page.evaluate(`
     (() => Array.from(document.querySelectorAll('a.shelfBook[href]'))
@@ -345,11 +368,17 @@ export async function resolveShelfReaderUrl(page: IPage, bookId: string): Promis
       })
       .filter(Boolean))
   `) as string[];
-  if (readerUrls.length !== trustedIndexedBookIds.length) return null;
+  const expectedEntryCount = trustedIndexedBookIds.length > 0 ? trustedIndexedBookIds.length : rawBookIds.length;
+  if (readerUrls.length !== expectedEntryCount) {
+    return { snapshot, readerUrl: null };
+  }
   const entries = buildWebShelfEntries(snapshot, readerUrls);
 
   const entry = entries.find((candidate) => candidate.bookId === bookId);
-  return entry?.readerUrl || null;
+  return {
+    snapshot,
+    readerUrl: entry?.readerUrl || null,
+  };
 }
 
 /** Format a Unix timestamp (seconds) to YYYY-MM-DD in UTC+8. Returns '-' for invalid input. */
