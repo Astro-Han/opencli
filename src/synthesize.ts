@@ -132,7 +132,10 @@ export function resolveExploreDir(target: string): string {
   // Fallback: check cwd/.opencli/explore/<target> (legacy location)
   const cwdCandidate = path.join('.opencli', 'explore', target);
   if (fs.existsSync(cwdCandidate)) return cwdCandidate;
-  throw new Error(`Explore directory not found: ${target}`);
+  throw new Error(
+    `Explore directory not found: ${target}. `
+    + 'If artifacts were created elsewhere, pass the full path.',
+  );
 }
 
 export function loadExploreBundle(exploreDir: string): LoadedExploreBundle {
