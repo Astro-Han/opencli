@@ -13,13 +13,13 @@
  */
 
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import * as readline from 'node:readline';
 import chalk from 'chalk';
 import yaml from 'js-yaml';
 import { sendCommand } from './browser/daemon-client.js';
 import type { IPage } from './types.js';
+import { getUserRecordDir } from './user-opencli-paths.js';
 import { SEARCH_PARAMS, PAGINATION_PARAMS, FIELD_ROLES } from './constants.js';
 import {
   urlToPattern,
@@ -736,7 +736,7 @@ function analyzeAndWrite(
   outDir?: string,
 ): RecordResult {
   // Default to ~/.opencli/record/<site>/ so we never pollute cwd (#711)
-  const targetDir = outDir ?? path.join(os.homedir(), '.opencli', 'record', site);
+  const targetDir = outDir ?? getUserRecordDir(site);
   fs.mkdirSync(targetDir, { recursive: true });
 
   if (requests.length === 0) {

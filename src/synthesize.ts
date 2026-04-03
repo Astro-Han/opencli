@@ -4,11 +4,11 @@
  */
 
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import yaml from 'js-yaml';
 import { VOLATILE_PARAMS, SEARCH_PARAMS, LIMIT_PARAMS, PAGINATION_PARAMS } from './constants.js';
 import type { ExploreAuthSummary, ExploreEndpointArtifact, ExploreManifest } from './explore.js';
+import { getUserExploreDir } from './user-opencli-paths.js';
 
 
 interface RecommendedArg {
@@ -127,7 +127,7 @@ export function renderSynthesizeSummary(result: SynthesizeResult): string {
 export function resolveExploreDir(target: string): string {
   if (fs.existsSync(target)) return target;
   // Check ~/.opencli/explore/<target> (new default location, #711)
-  const homeCandidate = path.join(os.homedir(), '.opencli', 'explore', target);
+  const homeCandidate = getUserExploreDir(target);
   if (fs.existsSync(homeCandidate)) return homeCandidate;
   // Fallback: check cwd/.opencli/explore/<target> (legacy location)
   const cwdCandidate = path.join('.opencli', 'explore', target);

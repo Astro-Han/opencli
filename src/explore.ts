@@ -7,7 +7,6 @@
  */
 
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import { DEFAULT_BROWSER_EXPLORE_TIMEOUT, browserSession, runWithTimeout } from './runtime.js';
 import type { IBrowserFactory } from './runtime.js';
@@ -17,6 +16,7 @@ import { discoverStores } from './scripts/store.js';
 import { interactFuzz } from './scripts/interact.js';
 import type { IPage } from './types.js';
 import { log } from './logger.js';
+import { getUserExploreDir } from './user-opencli-paths.js';
 import {
   urlToPattern,
   findArrayPath,
@@ -449,7 +449,7 @@ export async function exploreUrl(
       // Step 9: Assemble result and write artifacts
       const siteName = opts.site ?? detectSiteName(metadata.url || url);
       // Default to ~/.opencli/explore/<site>/ so we never pollute cwd (#711)
-      const targetDir = opts.outDir ?? path.join(os.homedir(), '.opencli', 'explore', siteName);
+      const targetDir = opts.outDir ?? getUserExploreDir(siteName);
 
       const result = {
         site: siteName, target_url: url, final_url: metadata.url, title: metadata.title,
