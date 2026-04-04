@@ -25,19 +25,8 @@ async function getOperatePage(): Promise<import('./types.js').IPage> {
   return bridge.connect({ timeout: 30, workspace: 'operate:default' });
 }
 
-type VerboseOpts = { verbose?: boolean };
-
-export function registerVerboseAction<TArgs extends unknown[]>(
-  cmd: Command,
-  action: (...args: TArgs) => Promise<void> | void,
-): Command {
-  return cmd
-    .option('-v, --verbose', 'Debug output')
-    .action(async (...args: unknown[]) => {
-      const opts = cmd.opts() as VerboseOpts;
-      if (opts.verbose) process.env.OPENCLI_VERBOSE = '1';
-      await action(...args as TArgs);
-    });
+function applyVerbose(opts: { verbose?: boolean }): void {
+  if (opts.verbose) process.env.OPENCLI_VERBOSE = '1';
 }
 
 export function createProgram(BUILTIN_CLIS: string, USER_CLIS: string): Command {
@@ -150,9 +139,8 @@ export function createProgram(BUILTIN_CLIS: string, USER_CLIS: string): Command 
 
   // ── Built-in: explore / synthesize / generate / cascade ───────────────────
 
-  registerVerboseAction(
-    program
-      .command('explore')
+  program
+    .command('explore')
     .alias('probe')
     .description('Explore a website: discover APIs, stores, and recommend strategies')
     .argument('<url>')
@@ -160,8 +148,9 @@ export function createProgram(BUILTIN_CLIS: string, USER_CLIS: string): Command 
     .option('--goal <text>')
     .option('--wait <s>', '', '3')
     .option('--auto', 'Enable interactive fuzzing')
-    .option('--click <labels>', 'Comma-separated labels to click before fuzzing'),
-    async (url: string, opts: {
+    .option('--click <labels>', 'Comma-separated labels to click before fuzzing')
+    .option('-v, --verbose', 'Debug output')
+    .action(async (url: string, opts: {
       site?: string;
       goal?: string;
       wait: string;
@@ -169,6 +158,7 @@ export function createProgram(BUILTIN_CLIS: string, USER_CLIS: string): Command 
       click?: string;
       verbose?: boolean;
     }) => {
+      applyVerbose(opts);
       const { exploreUrl, renderExploreSummary } = await import('./explore.js');
       const clickLabels = opts.click
         ? opts.click.split(',').map((s: string) => s.trim())
@@ -184,8 +174,7 @@ export function createProgram(BUILTIN_CLIS: string, USER_CLIS: string): Command 
         workspace,
       });
       console.log(renderExploreSummary(result));
-    },
-  );
+    });
 
   program
     .command('synthesize')
@@ -197,18 +186,19 @@ export function createProgram(BUILTIN_CLIS: string, USER_CLIS: string): Command 
       console.log(renderSynthesizeSummary(synthesizeFromExplore(target, { top: parseInt(opts.top) })));
     });
 
-  registerVerboseAction(
-    program
-      .command('generate')
+  program
+    .command('generate')
     .description('One-shot: explore → synthesize → register')
     .argument('<url>')
     .option('--goal <text>')
-    .option('--site <name>'),
-    async (url: string, opts: {
+    .option('--site <name>')
+    .option('-v, --verbose', 'Debug output')
+    .action(async (url: string, opts: {
       goal?: string;
       site?: string;
       verbose?: boolean;
     }) => {
+      applyVerbose(opts);
       const { generateCliFromUrl, renderGenerateSummary } = await import('./generate.js');
       const workspace = `generate:${inferHost(url, opts.site)}`;
       const r = await generateCliFromUrl({
@@ -220,27 +210,27 @@ export function createProgram(BUILTIN_CLIS: string, USER_CLIS: string): Command 
       });
       console.log(renderGenerateSummary(r));
       process.exitCode = r.ok ? EXIT_CODES.SUCCESS : EXIT_CODES.GENERIC_ERROR;
-    },
-  );
+    });
 
   // ── Built-in: record ─────────────────────────────────────────────────────
 
-  registerVerboseAction(
-    program
-      .command('record')
+  program
+    .command('record')
     .description('Record API calls from a live browser session → generate YAML candidates')
     .argument('<url>', 'URL to open and record')
     .option('--site <name>', 'Site name (inferred from URL if omitted)')
     .option('--out <dir>', 'Output directory for candidates')
     .option('--poll <ms>', 'Poll interval in milliseconds', '2000')
-    .option('--timeout <ms>', 'Auto-stop after N milliseconds (default: 60000)', '60000'),
-    async (url: string, opts: {
+    .option('--timeout <ms>', 'Auto-stop after N milliseconds (default: 60000)', '60000')
+    .option('-v, --verbose', 'Debug output')
+    .action(async (url: string, opts: {
       site?: string;
       out?: string;
       poll: string;
       timeout: string;
       verbose?: boolean;
     }) => {
+      applyVerbose(opts);
       const { recordSession, renderRecordSummary } = await import('./record.js');
       const result = await recordSession({
         BrowserFactory: getBrowserFactory(),
@@ -252,19 +242,19 @@ export function createProgram(BUILTIN_CLIS: string, USER_CLIS: string): Command 
       });
       console.log(renderRecordSummary(result));
       process.exitCode = result.candidateCount > 0 ? EXIT_CODES.SUCCESS : EXIT_CODES.EMPTY_RESULT;
-    },
-  );
+    });
 
-  registerVerboseAction(
-    program
-      .command('cascade')
+  program
+    .command('cascade')
     .description('Strategy cascade: find simplest working strategy')
     .argument('<url>')
-    .option('--site <name>'),
-    async (url: string, opts: {
+    .option('--site <name>')
+    .option('-v, --verbose', 'Debug output')
+    .action(async (url: string, opts: {
       site?: string;
       verbose?: boolean;
     }) => {
+      applyVerbose(opts);
       const { cascadeProbe, renderCascadeResult } = await import('./cascade.js');
       const workspace = `cascade:${inferHost(url, opts.site)}`;
       const result = await browserSession(getBrowserFactory(), async (page) => {
@@ -276,8 +266,7 @@ export function createProgram(BUILTIN_CLIS: string, USER_CLIS: string): Command 
         return cascadeProbe(page, url);
       }, { workspace });
       console.log(renderCascadeResult(result));
-    },
-  );
+    });
 
   // ── Built-in: operate (browser control for Claude Code skill) ───────────────
   //
