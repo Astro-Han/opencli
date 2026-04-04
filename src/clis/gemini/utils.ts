@@ -148,22 +148,12 @@ export function collapseAdjacentGeminiTurns(turns: GeminiTurn[]): GeminiTurn[] {
   return collapsed;
 }
 
-function areGeminiTurnsEqual(left: GeminiTurn[], right: GeminiTurn[]): boolean {
-  if (left.length !== right.length) return false;
-  return left.every((turn, index) => turn.Role === right[index]?.Role && turn.Text === right[index]?.Text);
-}
-
 function hasGeminiTurnPrefix(before: GeminiTurn[], current: GeminiTurn[]): boolean {
   if (before.length > current.length) return false;
   return before.every((turn, index) => (
     turn.Role === current[index]?.Role
     && turn.Text === current[index]?.Text
   ));
-}
-
-function areGeminiLinesEqual(left: string[], right: string[]): boolean {
-  if (left.length !== right.length) return false;
-  return left.every((line, index) => line === right[index]);
 }
 
 function findLastMatchingGeminiTurnIndex(turns: GeminiTurn[], target: GeminiTurn | null): number | null {
@@ -252,6 +242,8 @@ function getStateScript(): string {
         const href = node.getAttribute('href') || '';
         return text === 'sign in'
           || aria === 'sign in'
+          || text === '登录'
+          || aria === '登录'
           || href.includes('accounts.google.com/ServiceLogin');
       });
 
