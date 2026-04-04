@@ -1,3 +1,4 @@
+import { CommandExecutionError } from '../../errors.js';
 import type { IPage } from '../../types.js';
 
 export const GEMINI_DOMAIN = 'gemini.google.com';
@@ -773,7 +774,7 @@ export async function sendGeminiMessage(page: IPage, text: string): Promise<'but
     if (attempt < GEMINI_COMPOSER_PREPARE_ATTEMPTS - 1) await page.wait(GEMINI_COMPOSER_PREPARE_WAIT_SECONDS);
   }
   if (!prepared?.ok) {
-    throw new Error(prepared?.reason || 'Could not find Gemini composer');
+    throw new CommandExecutionError(prepared?.reason || 'Could not find Gemini composer');
   }
 
   let hasText = false;
@@ -792,7 +793,7 @@ export async function sendGeminiMessage(page: IPage, text: string): Promise<'but
   }
 
   if (!hasText) {
-    throw new Error('Failed to insert text into Gemini composer');
+    throw new CommandExecutionError('Failed to insert text into Gemini composer');
   }
 
   const submitAction = await page.evaluate(submitComposerScript()) as 'button' | 'enter';
@@ -828,8 +829,6 @@ export const __test__ = {
   submitComposerScript,
   insertComposerTextFallbackScript,
 };
-
-
 
 export async function getGeminiVisibleImageUrls(page: IPage): Promise<string[]> {
   await ensureGeminiPage(page);
