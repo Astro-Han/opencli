@@ -8,6 +8,13 @@
 
 const attached = new Set<number>();
 
+type ConsoleMessage = {
+  level: 'log' | 'warn' | 'error' | 'info' | 'debug';
+  text: string;
+  timestamp?: number;
+  source?: 'console-api' | 'exception';
+};
+
 type NetworkCaptureEntry = {
   kind: 'cdp';
   url: string;
@@ -26,13 +33,32 @@ type NetworkCaptureState = {
   patterns: string[];
   entries: NetworkCaptureEntry[];
   requestToIndex: Map<string, number>;
+  consoleErrors: ConsoleMessage[];
+  consoleOther: ConsoleMessage[];
+  armed: boolean;
 };
 
 const networkCaptures = new Map<number, NetworkCaptureState>();
+const captureIntents = new Map<number, { patterns: string[] }>();
 /** Check if a URL can be attached via CDP — only allow http(s) and blank pages. */
 function isDebuggableUrl(url?: string): boolean {
   if (!url) return true;  // empty/undefined = tab still loading, allow it
   return url.startsWith('http://') || url.startsWith('https://') || url === 'about:blank' || url.startsWith('data:');
+}
+
+async function cleanupForeignExtensionSurface(tabId: number): Promise<void> {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN',
+      func: () => {
+        document.querySelectorAll('iframe[src^="chrome-extension://"], [src^="chrome-extension://"]')
+          .forEach((node) => node.remove());
+      },
+    });
+  } catch {
+    // Best-effort cleanup only.
+  }
 }
 
 export async function ensureAttached(tabId: number, aggressiveRetry: boolean = false): Promise<void> {
@@ -82,6 +108,9 @@ export async function ensureAttached(tabId: number, aggressiveRetry: boolean = f
     } catch (e: unknown) {
       lastError = e instanceof Error ? e.message : String(e);
       if (attempt < MAX_ATTACH_RETRIES) {
+        if (lastError.includes('chrome-extension://')) {
+          await cleanupForeignExtensionSurface(tabId);
+        }
         console.warn(`[opencli] attach attempt ${attempt}/${MAX_ATTACH_RETRIES} failed: ${lastError}, retrying in ${RETRY_DELAY_MS}ms...`);
         await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
         // Re-verify tab URL before retrying (it may have changed)
@@ -116,6 +145,16 @@ export async function ensureAttached(tabId: number, aggressiveRetry: boolean = f
     throw new Error(`attach failed: ${lastError}${hint}`);
   }
   attached.add(tabId);
+
+  const state = networkCaptures.get(tabId);
+  if (captureIntents.has(tabId) && !state?.armed) {
+    try {
+      await armCapture(tabId);
+    } catch (error) {
+      console.warn(`[opencli] failed to rearm capture for tab ${tabId}: ${error}`);
+    }
+    return;
+  }
 
   try {
     await chrome.debugger.sendCommand({ tabId }, 'Runtime.enable');
@@ -292,6 +331,57 @@ function normalizeHeaders(headers: unknown): Record<string, string> {
   return out;
 }
 
+function resetNetworkBuffers(state: NetworkCaptureState): void {
+  state.entries = [];
+  state.requestToIndex.clear();
+}
+
+function resetConsoleBuffers(state: NetworkCaptureState): void {
+  state.consoleErrors = [];
+  state.consoleOther = [];
+}
+
+function normalizeConsoleLevel(type: string): ConsoleMessage['level'] | null {
+  switch (type) {
+    case 'warning':
+      return 'warn';
+    case 'verbose':
+      return 'debug';
+    case 'log':
+    case 'warn':
+    case 'error':
+    case 'info':
+    case 'debug':
+      return type;
+    default:
+      return null;
+  }
+}
+
+function pushConsoleMessage(state: NetworkCaptureState, message: ConsoleMessage): void {
+  const bucket = message.level === 'error' || message.level === 'warn'
+    ? state.consoleErrors
+    : state.consoleOther;
+  bucket.push(message);
+  const limit = bucket === state.consoleErrors ? 200 : 300;
+  if (bucket.length > limit) bucket.shift();
+}
+
+async function armCapture(tabId: number): Promise<void> {
+  const patterns = captureIntents.get(tabId)?.patterns ?? networkCaptures.get(tabId)?.patterns ?? [];
+  await chrome.debugger.sendCommand({ tabId }, 'Network.enable');
+  await chrome.debugger.sendCommand({ tabId }, 'Runtime.enable');
+  const existing = networkCaptures.get(tabId);
+  networkCaptures.set(tabId, {
+    patterns,
+    entries: existing?.entries ?? [],
+    requestToIndex: existing?.requestToIndex ?? new Map(),
+    consoleErrors: existing?.consoleErrors ?? [],
+    consoleOther: existing?.consoleOther ?? [],
+    armed: true,
+  });
+}
+
 function getOrCreateNetworkCaptureEntry(tabId: number, requestId: string, fallback?: {
   url?: string;
   method?: string;
@@ -321,17 +411,36 @@ export async function startNetworkCapture(
   tabId: number,
   pattern?: string,
 ): Promise<void> {
+  const patterns = normalizeCapturePatterns(pattern);
+  captureIntents.set(tabId, { patterns });
+
+  const existing = networkCaptures.get(tabId);
+  if (existing) {
+    existing.patterns = patterns;
+    resetNetworkBuffers(existing);
+  }
+
   await ensureAttached(tabId);
-  await chrome.debugger.sendCommand({ tabId }, 'Network.enable');
-  networkCaptures.set(tabId, {
-    patterns: normalizeCapturePatterns(pattern),
-    entries: [],
-    requestToIndex: new Map(),
-  });
+
+  const state = networkCaptures.get(tabId);
+  if (state?.armed) return;
+  await armCapture(tabId);
+  resetNetworkBuffers(networkCaptures.get(tabId)!);
+}
+
+async function ensureCaptureReadable(tabId: number): Promise<NetworkCaptureState | undefined> {
+  const state = networkCaptures.get(tabId);
+  if (!captureIntents.has(tabId) || state?.armed) return state;
+  await ensureAttached(tabId);
+  const refreshed = networkCaptures.get(tabId);
+  if (captureIntents.has(tabId) && !refreshed?.armed) {
+    throw new Error(`capture rearm failed for tab ${tabId}`);
+  }
+  return refreshed;
 }
 
 export async function readNetworkCapture(tabId: number): Promise<NetworkCaptureEntry[]> {
-  const state = networkCaptures.get(tabId);
+  const state = await ensureCaptureReadable(tabId);
   if (!state) return [];
   const entries = state.entries.slice();
   state.entries = [];
@@ -339,22 +448,57 @@ export async function readNetworkCapture(tabId: number): Promise<NetworkCaptureE
   return entries;
 }
 
+export async function readConsoleCapture(tabId: number): Promise<ConsoleMessage[]> {
+  const state = await ensureCaptureReadable(tabId);
+  if (!state) return [];
+  return [...state.consoleErrors, ...state.consoleOther]
+    .sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
+}
+
+export async function stopCapture(tabId: number): Promise<void> {
+  captureIntents.delete(tabId);
+  networkCaptures.delete(tabId);
+}
+
 export async function detach(tabId: number): Promise<void> {
+  const state = networkCaptures.get(tabId);
+  const preserveCapture = captureIntents.has(tabId);
+  if (state) {
+    state.armed = false;
+    state.requestToIndex.clear();
+    if (!preserveCapture) {
+      resetNetworkBuffers(state);
+      resetConsoleBuffers(state);
+      networkCaptures.delete(tabId);
+    }
+  }
   if (!attached.has(tabId)) return;
   attached.delete(tabId);
-  networkCaptures.delete(tabId);
   try { await chrome.debugger.detach({ tabId }); } catch { /* ignore */ }
+}
+
+export function hasCaptureIntent(tabId: number): boolean {
+  return captureIntents.has(tabId);
 }
 
 export function registerListeners(): void {
   chrome.tabs.onRemoved.addListener((tabId) => {
     attached.delete(tabId);
+    captureIntents.delete(tabId);
     networkCaptures.delete(tabId);
   });
   chrome.debugger.onDetach.addListener((source) => {
     if (source.tabId) {
       attached.delete(source.tabId);
-      networkCaptures.delete(source.tabId);
+      const state = networkCaptures.get(source.tabId);
+      if (!state) return;
+      state.armed = false;
+      state.requestToIndex.clear();
+      if (!captureIntents.has(source.tabId)) {
+        resetNetworkBuffers(state);
+        resetConsoleBuffers(state);
+        networkCaptures.delete(source.tabId);
+      }
     }
   });
   // Invalidate attached cache when tab URL changes to non-debuggable
@@ -367,7 +511,7 @@ export function registerListeners(): void {
     const tabId = source.tabId;
     if (!tabId) return;
     const state = networkCaptures.get(tabId);
-    if (!state) return;
+    if (!state?.armed) return;
 
     if (method === 'Network.requestWillBeSent') {
       const requestId = String(params?.requestId || '');
@@ -435,6 +579,42 @@ export function registerListeners(): void {
       } catch {
         // Optional; bodies are unavailable for some requests (e.g. uploads).
       }
+      return;
+    }
+
+    if (method === 'Runtime.consoleAPICalled') {
+      const consoleParams = params as {
+        type?: string;
+        args?: Array<{ value?: unknown; description?: string }>;
+        timestamp?: number;
+      };
+      const level = normalizeConsoleLevel(String(consoleParams.type || ''));
+      if (!level) return;
+      const text = (consoleParams.args || [])
+        .map((arg) => arg.value !== undefined ? String(arg.value) : String(arg.description || ''))
+        .join(' ');
+      pushConsoleMessage(state, {
+        level,
+        text,
+        timestamp: consoleParams.timestamp,
+        source: 'console-api',
+      });
+      return;
+    }
+
+    if (method === 'Runtime.exceptionThrown') {
+      const exceptionParams = params as {
+        timestamp?: number;
+        exceptionDetails?: { exception?: { description?: string }; text?: string };
+      };
+      pushConsoleMessage(state, {
+        level: 'error',
+        text: exceptionParams.exceptionDetails?.exception?.description
+          || exceptionParams.exceptionDetails?.text
+          || 'Unknown exception',
+        timestamp: exceptionParams.timestamp,
+        source: 'exception',
+      });
     }
   });
 }

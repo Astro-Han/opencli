@@ -296,6 +296,10 @@ async function handleCommand(cmd: Command): Promise<Result> {
         return await handleNetworkCaptureStart(cmd, workspace);
       case 'network-capture-read':
         return await handleNetworkCaptureRead(cmd, workspace);
+      case 'console-read':
+        return await handleConsoleRead(cmd, workspace);
+      case 'capture-stop':
+        return await handleCaptureStop(cmd, workspace);
       default:
         return { id: cmd.id, ok: false, error: `Unknown action: ${cmd.action}` };
     }
@@ -590,6 +594,14 @@ async function handleNavigate(cmd: Command, workspace: string): Promise<Result> 
     }
   }
 
+  if (executor.hasCaptureIntent(tabId)) {
+    try {
+      await executor.ensureAttached(tabId);
+    } catch (error) {
+      console.warn(`[opencli] failed to reattach after navigate: ${error}`);
+    }
+  }
+
   return {
     id: cmd.id,
     ok: true,
@@ -801,6 +813,26 @@ async function handleNetworkCaptureRead(cmd: Command, workspace: string): Promis
   }
 }
 
+async function handleConsoleRead(cmd: Command, workspace: string): Promise<Result> {
+  const tabId = await resolveTabId(cmd.tabId, workspace);
+  try {
+    const data = await executor.readConsoleCapture(tabId);
+    return { id: cmd.id, ok: true, data };
+  } catch (err) {
+    return { id: cmd.id, ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+async function handleCaptureStop(cmd: Command, workspace: string): Promise<Result> {
+  const tabId = await resolveTabId(cmd.tabId, workspace);
+  try {
+    await executor.stopCapture(tabId);
+    return { id: cmd.id, ok: true, data: { stopped: true } };
+  } catch (err) {
+    return { id: cmd.id, ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 async function handleSessions(cmd: Command): Promise<Result> {
   const now = Date.now();
   const data = await Promise.all([...automationSessions.entries()].map(async ([workspace, session]) => ({
@@ -850,6 +882,7 @@ async function handleBindCurrent(cmd: Command, workspace: string): Promise<Resul
 }
 
 export const __test__ = {
+  handleCommand,
   handleNavigate,
   isTargetUrl,
   handleTabs,

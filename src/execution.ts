@@ -11,7 +11,7 @@
  */
 
 import { type CliCommand, type InternalCliCommand, type Arg, type CommandArgs, Strategy, getRegistry, fullName } from './registry.js';
-import type { IPage } from './types.js';
+import type { CaptureCapablePage, IPage } from './types.js';
 import { pathToFileURL } from 'node:url';
 import { executePipeline } from './pipeline/index.js';
 import { AdapterLoadError, ArgumentError, BrowserConnectError, CommandExecutionError, getErrorMessage } from './errors.js';
@@ -193,6 +193,8 @@ export async function executeCommand(
       ensureRequiredEnv(cmd);
       const BrowserFactory = getBrowserFactory(cmd.site);
       result = await browserSession(BrowserFactory, async (page) => {
+        const capturePage = page as CaptureCapablePage;
+        const diagnosticEnabled = isDiagnosticEnabled();
         const preNavUrl = resolvePreNav(cmd);
         if (preNavUrl) {
           // Navigate directly — the extension's handleNavigate already has a fast-path
@@ -204,6 +206,13 @@ export async function executeCommand(
             await page.goto(preNavUrl);
           } catch (err) {
             if (debug) log.debug(`[pre-nav] Failed to navigate to ${preNavUrl}: ${err instanceof Error ? err.message : err}`);
+          }
+        }
+        if (diagnosticEnabled) {
+          try {
+            await capturePage.startNetworkCapture();
+          } catch (err) {
+            if (debug) log.debug(`[capture] Failed to start capture: ${err instanceof Error ? err.message : err}`);
           }
         }
         try {
@@ -220,6 +229,14 @@ export async function executeCommand(
             diagnosticEmitted = true;
           }
           throw err;
+        } finally {
+          if (diagnosticEnabled) {
+            try {
+              await capturePage.stopCapture();
+            } catch (err) {
+              if (debug) log.debug(`[capture] Failed to stop capture: ${err instanceof Error ? err.message : err}`);
+            }
+          }
         }
       }, { workspace: `site:${cmd.site}`, cdpEndpoint });
     } else {

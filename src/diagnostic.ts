@@ -269,17 +269,34 @@ function normalizeInterceptedRequests(interceptedRequests: unknown[]): unknown[]
   }));
 }
 
+function redactConsoleEntry(entry: unknown): unknown {
+  if (typeof entry === 'string') {
+    return redactText(entry);
+  }
+  if (!entry || typeof entry !== 'object') {
+    return entry;
+  }
+  const consoleEntry = entry as Record<string, unknown>;
+  return {
+    ...consoleEntry,
+    ...(typeof consoleEntry.text === 'string' ? { text: redactText(consoleEntry.text) } : {}),
+  };
+}
+
 /** Safely collect page diagnostic state with redaction, size caps, and timeout. */
 async function collectPageState(page: IPage): Promise<RepairContext['page'] | undefined> {
   const collect = async (): Promise<RepairContext['page'] | undefined> => {
     try {
-      const [url, snapshot, networkRequests, interceptedRequests, consoleErrors] = await Promise.all([
+      const [url, snapshot, capturedNetworkRequests, interceptedRequests, consoleErrors] = await Promise.all([
         page.getCurrentUrl?.().catch(() => null) ?? Promise.resolve(null),
         page.snapshot().catch(() => '(snapshot unavailable)'),
-        page.networkRequests().catch(() => []),
+        page.readNetworkCapture?.().catch(() => null) ?? Promise.resolve(null),
         page.getInterceptedRequests().catch(() => []),
         page.consoleMessages('error').catch(() => []),
       ]);
+      const networkRequests = Array.isArray(capturedNetworkRequests) && capturedNetworkRequests.length > 0
+        ? capturedNetworkRequests
+        : await page.networkRequests().catch(() => []);
 
       const rawUrl = url ?? 'unknown';
       const capturedResponses = normalizeInterceptedRequests(interceptedRequests as unknown[]);
@@ -292,7 +309,7 @@ async function collectPageState(page: IPage): Promise<RepairContext['page'] | un
         capturedPayloads: capturedResponses,
         consoleErrors: (consoleErrors as unknown[])
           .slice(0, 50)
-          .map(e => typeof e === 'string' ? redactText(e) : e),
+          .map(redactConsoleEntry),
       };
     } catch {
       return undefined;

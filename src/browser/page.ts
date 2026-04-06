@@ -10,7 +10,7 @@
  * chrome-extension:// tab that can't be debugged.
  */
 
-import type { BrowserCookie, ScreenshotOptions } from '../types.js';
+import type { BrowserCookie, ConsoleMessage, ScreenshotOptions } from '../types.js';
 import { sendCommand } from './daemon-client.js';
 import { wrapForEval } from './utils.js';
 import { saveBase64ToFile } from '../utils.js';
@@ -24,10 +24,20 @@ export function isRetryableSettleError(err: unknown): boolean {
     || (message.includes('-32000') && message.toLowerCase().includes('target'));
 }
 
+function isUnsupportedCaptureError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return message.includes('Unknown action')
+    || message.includes('network-capture')
+    || message.includes('console-read')
+    || message.includes('capture-stop');
+}
+
 /**
  * Page — implements IPage by talking to the daemon via HTTP.
  */
 export class Page extends BasePage {
+  private _nativeCaptureSupported: boolean | undefined;
+
   constructor(private readonly workspace: string = 'default') {
     super();
   }
@@ -155,18 +165,65 @@ export class Page extends BasePage {
   }
 
   async startNetworkCapture(pattern: string = ''): Promise<void> {
-    await sendCommand('network-capture-start', {
-      pattern,
-      ...this._cmdOpts(),
-    });
+    try {
+      await sendCommand('network-capture-start', {
+        pattern,
+        ...this._cmdOpts(),
+      });
+      this._nativeCaptureSupported = true;
+    } catch (err) {
+      if (!isUnsupportedCaptureError(err)) throw err;
+      this._nativeCaptureSupported = false;
+    }
   }
 
   async readNetworkCapture(): Promise<unknown[]> {
-    const result = await sendCommand('network-capture-read', {
-      ...this._cmdOpts(),
-    });
-    return Array.isArray(result) ? result : [];
+    try {
+      const result = await sendCommand('network-capture-read', {
+        ...this._cmdOpts(),
+      });
+      this._nativeCaptureSupported = true;
+      return Array.isArray(result) ? result : [];
+    } catch (err) {
+      if (!isUnsupportedCaptureError(err)) throw err;
+      this._nativeCaptureSupported = false;
+      return this.networkRequests(false);
+    }
   }
+
+  async stopCapture(): Promise<void> {
+    try {
+      await sendCommand('capture-stop', {
+        ...this._cmdOpts(),
+      });
+      this._nativeCaptureSupported = true;
+    } catch (err) {
+      if (!isUnsupportedCaptureError(err)) throw err;
+      this._nativeCaptureSupported = false;
+    }
+  }
+
+  async consoleMessages(level: string = 'all'): Promise<ConsoleMessage[]> {
+    let messages: ConsoleMessage[] = [];
+    try {
+      const result = await sendCommand('console-read', {
+        ...this._cmdOpts(),
+      });
+      this._nativeCaptureSupported = true;
+      messages = Array.isArray(result) ? result as ConsoleMessage[] : [];
+    } catch (err) {
+      if (!isUnsupportedCaptureError(err)) throw err;
+      this._nativeCaptureSupported = false;
+    }
+    if (level === 'all') return messages;
+    if (level === 'error') return messages.filter((message) => message.level === 'error' || message.level === 'warn');
+    return messages.filter((message) => message.level === level);
+  }
+
+  hasNativeCaptureSupport(): boolean | undefined {
+    return this._nativeCaptureSupported;
+  }
+
   /**
    * Set local file paths on a file input element via CDP DOM.setFileInputFiles.
    * Chrome reads the files directly from the local filesystem, avoiding the
