@@ -5,7 +5,7 @@ import * as path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 import { CommandExecutionError } from '@jackwener/opencli/errors';
-import type { BrowserCookie, IPage } from '@jackwener/opencli/types';
+import type { BrowserCookie, CaptureCapablePage, IPage } from '@jackwener/opencli/types';
 import type { InstagramProtocolCaptureEntry } from './protocol-capture.js';
 import { instagramPrivateApiFetch } from './protocol-capture.js';
 import {
@@ -174,21 +174,18 @@ export async function resolveInstagramPrivatePublishConfig(page: IPage): Promise
   apiContext: InstagramPrivateApiContext;
   jazoest: string;
 }> {
+  const capturePage = page as CaptureCapablePage;
   let lastError: unknown;
   for (let attempt = 0; attempt < INSTAGRAM_PRIVATE_CONFIG_RETRY_BUDGET; attempt += 1) {
     try {
-      if (typeof page.startNetworkCapture === 'function') {
-        await page.startNetworkCapture(INSTAGRAM_PRIVATE_CAPTURE_PATTERN);
-      }
+      await capturePage.startNetworkCapture(INSTAGRAM_PRIVATE_CAPTURE_PATTERN);
       await page.goto(`${INSTAGRAM_HOME_URL}?__opencli_private_probe=${Date.now()}`);
       await page.wait({ time: 2 });
 
       const [cookies, runtime, entries] = await Promise.all([
         page.getCookies({ domain: 'instagram.com' }),
         page.evaluate(buildReadInstagramRuntimeInfoJs()) as Promise<InstagramRuntimeInfo>,
-        typeof page.readNetworkCapture === 'function'
-          ? page.readNetworkCapture() as Promise<unknown[]>
-          : Promise.resolve([]),
+        capturePage.readNetworkCapture() as Promise<unknown[]>,
       ]);
 
       const captureEntries = (Array.isArray(entries) ? entries : []) as InstagramProtocolCaptureEntry[];

@@ -5,7 +5,7 @@ import * as path from 'node:path';
 import { Page as BrowserPage } from '@jackwener/opencli/browser/page';
 import { cli, Strategy } from '@jackwener/opencli/registry';
 import { ArgumentError, AuthRequiredError, CommandExecutionError } from '@jackwener/opencli/errors';
-import type { BrowserCookie, IPage } from '@jackwener/opencli/types';
+import type { BrowserCookie, CaptureCapablePage, IPage } from '@jackwener/opencli/types';
 import {
   buildClickActionJs,
   buildEnsureComposerOpenJs,
@@ -809,9 +809,7 @@ cli({
       activePage: IPage,
       existingMediaPaths: ReadonlySet<string> = new Set(),
     ): Promise<InstagramReelSuccessRow[]> => {
-      if (typeof activePage.startNetworkCapture === 'function') {
-        await activePage.startNetworkCapture('/rupload_igvideo/|/api/v1/|/reel/|/clips/|/media/|/configure|/upload');
-      }
+      await (activePage as CaptureCapablePage).startNetworkCapture('/rupload_igvideo/|/api/v1/|/reel/|/clips/|/media/|/configure|/upload');
       await gotoInstagramHome(activePage, true);
       await activePage.wait({ time: 2 });
       await dismissResidualDialogs(activePage);

@@ -29,6 +29,14 @@ export interface InstagramProtocolCaptureEntry {
   timestamp: number;
 }
 
+type CaptureAwarePage = IPage & {
+  hasNativeCaptureSupport?: () => boolean | undefined;
+};
+
+function hasNativeCaptureSupport(page: IPage): boolean | undefined {
+  return (page as CaptureAwarePage).hasNativeCaptureSupport?.();
+}
+
 export function buildInstallInstagramProtocolCaptureJs(
   captureVar: string = DEFAULT_CAPTURE_VAR,
   captureErrorsVar: string = DEFAULT_CAPTURE_ERRORS_VAR,
@@ -226,7 +234,9 @@ export async function installInstagramProtocolCapture(page: IPage): Promise<void
   if (typeof page.startNetworkCapture === 'function') {
     try {
       await page.startNetworkCapture(INSTAGRAM_PROTOCOL_CAPTURE_PATTERN);
-      return;
+      if (hasNativeCaptureSupport(page) !== false) {
+        return;
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (!message.includes('Unknown action') && !message.includes('network-capture')) {
@@ -244,10 +254,12 @@ export async function readInstagramProtocolCapture(page: IPage): Promise<{
   if (typeof page.readNetworkCapture === 'function') {
     try {
       const data = await page.readNetworkCapture();
-      return {
-        data: Array.isArray(data) ? data as InstagramProtocolCaptureEntry[] : [],
-        errors: [],
-      };
+      if (hasNativeCaptureSupport(page) !== false) {
+        return {
+          data: Array.isArray(data) ? data as InstagramProtocolCaptureEntry[] : [],
+          errors: [],
+        };
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (!message.includes('Unknown action') && !message.includes('network-capture')) {
