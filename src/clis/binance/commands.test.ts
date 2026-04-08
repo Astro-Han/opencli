@@ -1,9 +1,7 @@
 import fs from 'node:fs';
 import yaml from 'js-yaml';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { executePipeline } from '../../pipeline/index.js';
-
-type BinanceRow = Record<string, unknown>;
+import { executePipeline } from '../../pipeline.js';
 
 function loadPipeline(name: string): any[] {
   const file = new URL(`./${name}.yaml`, import.meta.url);
@@ -13,9 +11,6 @@ function loadPipeline(name: string): any[] {
 
 function mockJsonOnce(payload: unknown) {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-    ok: true,
-    status: 200,
-    statusText: 'OK',
     json: vi.fn().mockResolvedValue(payload),
   }));
 }
@@ -33,7 +28,7 @@ describe('binance YAML adapters', () => {
       { symbol: 'MID', lastPrice: '3', priceChangePercent: '3.4', highPrice: '3', lowPrice: '3', quoteVolume: '11.0' },
     ]);
 
-    const result = await executePipeline(null, loadPipeline('top'), { args: { limit: 3 } }) as BinanceRow[];
+    const result = await executePipeline(null, loadPipeline('top'), { args: { limit: 3 } });
 
     expect(result.map((item: any) => item.symbol)).toEqual(['LARGE', 'MID', 'SMALL']);
     expect(result.map((item: any) => item.rank)).toEqual([1, 2, 3]);
@@ -46,7 +41,7 @@ describe('binance YAML adapters', () => {
       { symbol: 'HUNDRED', lastPrice: '1', priceChangePercent: '100.0', quoteVolume: '100' },
     ]);
 
-    const result = await executePipeline(null, loadPipeline('gainers'), { args: { limit: 3 } }) as BinanceRow[];
+    const result = await executePipeline(null, loadPipeline('gainers'), { args: { limit: 3 } });
 
     expect(result.map((item: any) => item.symbol)).toEqual(['HUNDRED', 'TEN', 'NINE']);
   });
@@ -59,7 +54,7 @@ describe('binance YAML adapters', () => {
       ],
     });
 
-    const result = await executePipeline(null, loadPipeline('pairs'), { args: { limit: 10 } }) as BinanceRow[];
+    const result = await executePipeline(null, loadPipeline('pairs'), { args: { limit: 10 } });
 
     expect(result).toEqual([
       { symbol: 'BTCUSDT', base: 'BTC', quote: 'USDT', status: 'TRADING' },
