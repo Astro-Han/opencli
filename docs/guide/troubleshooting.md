@@ -45,7 +45,7 @@ opencli daemon restart
 opencli doctor
 ```
 
-> The daemon auto-exits after 4 hours of inactivity (no CLI requests and no extension connection). Override with `OPENCLI_DAEMON_TIMEOUT` (milliseconds, `0` = never timeout).
+> The daemon is persistent and stays alive until explicitly stopped (`opencli daemon stop`) or the package is uninstalled.
 
 ### Desktop adapter connection issues
 

@@ -66,7 +66,6 @@ export interface DaemonStatus {
   extensionConnected: boolean;
   extensionVersion?: string;
   pending: number;
-  lastCliRequestTime: number;
   memoryMB: number;
   port: number;
 }

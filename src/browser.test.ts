@@ -153,7 +153,6 @@ describe('BrowserBridge state', () => {
         uptime: 0,
         extensionConnected: false,
         pending: 0,
-        lastCliRequestTime: 0,
         memoryMB: 0,
         port: 0,
       },
