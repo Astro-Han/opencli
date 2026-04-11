@@ -252,6 +252,17 @@ function normalizeInterceptedRequests(interceptedRequests: unknown[]): unknown[]
   }));
 }
 
+function isNetworkCaptureEntry(entry: unknown): entry is Record<string, unknown> {
+  return !!entry
+    && typeof entry === 'object'
+    && (
+      typeof (entry as Record<string, unknown>).url === 'string'
+      || typeof (entry as Record<string, unknown>).method === 'string'
+      || typeof (entry as Record<string, unknown>).responseStatus === 'number'
+      || typeof (entry as Record<string, unknown>).responseContentType === 'string'
+    );
+}
+
 function redactConsoleEntry(entry: unknown): unknown {
   if (typeof entry === 'string') {
     return redactText(entry);
@@ -274,23 +285,22 @@ function hasNativeCaptureSupport(page: IPage): boolean | undefined {
 async function collectPageState(page: IPage): Promise<RepairContext['page'] | undefined> {
   const collect = async (): Promise<RepairContext['page'] | undefined> => {
     try {
-      const [url, snapshot, capturedNetworkRequests, interceptedRequests, consoleErrors] = await Promise.all([
+      const [url, snapshot, capturedNetworkRequests, consoleErrors] = await Promise.all([
         page.getCurrentUrl?.().catch(() => null) ?? Promise.resolve(null),
         page.snapshot().catch(() => '(snapshot unavailable)'),
         page.readNetworkCapture?.().catch(() => null) ?? Promise.resolve(null),
-        page.getInterceptedRequests().catch(() => []),
         page.consoleMessages('error').catch(() => []),
       ]);
-      const intercepted = interceptedRequests as unknown[];
-      const interceptedPayloads = normalizeInterceptedRequests(intercepted);
       const nativeCaptureUnsupported = hasNativeCaptureSupport(page) === false;
-      const interceptedNetworkFallback = nativeCaptureUnsupported && interceptedPayloads.length > 0
-        ? interceptedPayloads
-        : null;
-      const networkRequests = interceptedNetworkFallback
-        ?? (Array.isArray(capturedNetworkRequests) && capturedNetworkRequests.length > 0
-          ? capturedNetworkRequests
-          : await page.networkRequests().catch(() => []));
+      const capturedEntries = Array.isArray(capturedNetworkRequests) ? capturedNetworkRequests : [];
+      const capturedLooksLikeNetworkEntries = capturedEntries.some(isNetworkCaptureEntry);
+      const interceptedSource = nativeCaptureUnsupported && !capturedLooksLikeNetworkEntries
+        ? capturedEntries
+        : await page.getInterceptedRequests().catch(() => []);
+      const interceptedPayloads = normalizeInterceptedRequests(interceptedSource as unknown[]);
+      const networkRequests = nativeCaptureUnsupported && !capturedLooksLikeNetworkEntries
+        ? await page.networkRequests().catch(() => [])
+        : (capturedEntries.length > 0 ? capturedEntries : await page.networkRequests().catch(() => []));
 
       const rawUrl = url ?? 'unknown';
       return {

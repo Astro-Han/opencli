@@ -279,18 +279,14 @@ describe('browser capture compatibility', () => {
 
   it('falls back to legacy intercepted requests for browser network when native capture is unavailable', async () => {
     const page = {
-      readNetworkCapture: vi.fn().mockResolvedValue([]),
-      hasNativeCaptureSupport: vi.fn().mockReturnValue(false),
-      getInterceptedRequests: vi.fn().mockResolvedValue([
+      readNetworkCapture: vi.fn().mockResolvedValue([
         {
-          url: 'https://api.example.com/items',
-          method: 'GET',
-          status: 200,
-          size: 15,
-          ct: 'application/json',
-          body: { ok: true },
+          ok: true,
+          items: [{ id: 1 }],
         },
       ]),
+      hasNativeCaptureSupport: vi.fn().mockReturnValue(false),
+      getInterceptedRequests: vi.fn().mockResolvedValue([]),
     } as unknown as IPage;
 
     mockBridgeConnect.mockResolvedValue(page);
@@ -299,8 +295,8 @@ describe('browser capture compatibility', () => {
     await program.parseAsync(['node', 'opencli', 'browser', 'network']);
 
     expect(page.readNetworkCapture).toHaveBeenCalledTimes(1);
-    expect(page.getInterceptedRequests).toHaveBeenCalledTimes(1);
+    expect(page.getInterceptedRequests).not.toHaveBeenCalled();
     expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Captured 1 API requests:'));
-    expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('https://api.example.com/items'));
+    expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('(interceptor payload)'));
   });
 });

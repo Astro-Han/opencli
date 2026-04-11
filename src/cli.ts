@@ -47,8 +47,36 @@ function hasNativeCaptureSupport(page: IPage): boolean | undefined {
 
 type CapturedRequest = { url: string; method: string; status: number; size: number; ct: string; body: unknown };
 
+function isNetworkCaptureEntry(entry: unknown): entry is Record<string, unknown> {
+  return !!entry
+    && typeof entry === 'object'
+    && (
+      typeof (entry as Record<string, unknown>).url === 'string'
+      || typeof (entry as Record<string, unknown>).method === 'string'
+      || typeof (entry as Record<string, unknown>).responseStatus === 'number'
+      || typeof (entry as Record<string, unknown>).responseContentType === 'string'
+    );
+}
+
 function normalizeCapturedRequests(raw: unknown[]): CapturedRequest[] {
   return (raw as Array<Record<string, unknown>>).map((entry) => {
+    if (!isNetworkCaptureEntry(entry)) {
+      const serialized = (() => {
+        try {
+          return JSON.stringify(entry);
+        } catch {
+          return String(entry);
+        }
+      })();
+      return {
+        url: '(interceptor payload)',
+        method: 'INTERCEPT',
+        status: 200,
+        size: serialized.length,
+        ct: 'application/json',
+        body: entry,
+      };
+    }
     const preview = typeof entry.responsePreview === 'string' ? entry.responsePreview : null;
     let body: unknown = entry.body ?? null;
     if (preview) {
@@ -81,6 +109,7 @@ async function installOperateFallbackCapture(page: IPage): Promise<void> {
 async function readOperateCapture(page: IPage): Promise<CapturedRequest[]> {
   const raw = await asCapturePage(page).readNetworkCapture();
   if (hasNativeCaptureSupport(page) === false) {
+    if (raw.length > 0) return normalizeCapturedRequests(raw);
     const intercepted = await page.getInterceptedRequests();
     if (intercepted.length > 0) return normalizeCapturedRequests(intercepted);
   }
