@@ -83,12 +83,14 @@ describe('executeCommand — non-browser timeout', () => {
     const startNetworkCapture = vi.fn().mockResolvedValue(undefined);
     const installInterceptor = vi.fn().mockResolvedValue(undefined);
     const stopCapture = vi.fn().mockResolvedValue(undefined);
+    const closeWindow = vi.fn().mockResolvedValue(undefined);
     const page = {
       goto: vi.fn(),
       startNetworkCapture,
       hasNativeCaptureSupport: vi.fn().mockReturnValue(false),
       installInterceptor,
       stopCapture,
+      closeWindow,
     } as any;
 
     mockBrowserSession.mockImplementationOnce(async (_factory, fn) => fn(page));
@@ -107,6 +109,8 @@ describe('executeCommand — non-browser timeout', () => {
     expect(startNetworkCapture).toHaveBeenCalledTimes(1);
     expect(installInterceptor).toHaveBeenCalledWith('');
     expect(stopCapture).toHaveBeenCalledTimes(1);
+    expect(closeWindow).toHaveBeenCalledTimes(1);
+    expect(stopCapture.mock.invocationCallOrder[0]).toBeLessThan(closeWindow.mock.invocationCallOrder[0]);
   });
 
   it('does not re-run custom validation when args are already prepared', async () => {

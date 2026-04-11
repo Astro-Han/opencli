@@ -196,6 +196,7 @@ export async function executeCommand(
       result = await browserSession(BrowserFactory, async (page) => {
         const capturePage = page as CaptureCapablePage;
         const diagnosticEnabled = isDiagnosticEnabled();
+        let captureStopped = false;
         const preNavUrl = resolvePreNav(cmd);
         if (preNavUrl) {
           // Navigate directly — the extension's handleNavigate already has a fast-path
@@ -221,6 +222,14 @@ export async function executeCommand(
             timeout: cmd.timeoutSeconds ?? DEFAULT_BROWSER_COMMAND_TIMEOUT,
             label: fullName(cmd),
           });
+          if (diagnosticEnabled) {
+            try {
+              await capturePage.stopCapture();
+              captureStopped = true;
+            } catch (err) {
+              if (debug) log.debug(`[capture] Failed to stop capture: ${err instanceof Error ? err.message : err}`);
+            }
+          }
           // Adapter commands are one-shot — close the automation window immediately
           // instead of waiting for the 30s idle timeout.
           await page.closeWindow?.().catch(() => {});
@@ -235,7 +244,7 @@ export async function executeCommand(
           }
           throw err;
         } finally {
-          if (diagnosticEnabled) {
+          if (diagnosticEnabled && !captureStopped) {
             try {
               await capturePage.stopCapture();
             } catch (err) {

@@ -259,13 +259,19 @@ describe('browser capture compatibility', () => {
   });
 
   it('installs the legacy interceptor after open when native capture is unavailable', async () => {
+    const startNetworkCapture = vi.fn().mockResolvedValue(undefined);
+    const hasNativeCaptureSupport = vi.fn().mockReturnValue(false);
+    const installInterceptor = vi.fn().mockResolvedValue(undefined);
+    const goto = vi.fn().mockResolvedValue(undefined);
+    const wait = vi.fn().mockResolvedValue(undefined);
+    const getCurrentUrl = vi.fn().mockResolvedValue('https://example.com');
     const page = {
-      startNetworkCapture: vi.fn().mockResolvedValue(undefined),
-      hasNativeCaptureSupport: vi.fn().mockReturnValue(false),
-      installInterceptor: vi.fn().mockResolvedValue(undefined),
-      goto: vi.fn().mockResolvedValue(undefined),
-      wait: vi.fn().mockResolvedValue(undefined),
-      getCurrentUrl: vi.fn().mockResolvedValue('https://example.com'),
+      startNetworkCapture,
+      hasNativeCaptureSupport,
+      installInterceptor,
+      goto,
+      wait,
+      getCurrentUrl,
     } as unknown as IPage;
 
     mockBridgeConnect.mockResolvedValue(page);
@@ -275,6 +281,7 @@ describe('browser capture compatibility', () => {
 
     expect(page.startNetworkCapture).toHaveBeenCalledTimes(1);
     expect(page.installInterceptor).toHaveBeenCalledWith('');
+    expect(installInterceptor.mock.invocationCallOrder[0]).toBeLessThan(goto.mock.invocationCallOrder[0]);
   });
 
   it('falls back to legacy intercepted requests for browser network when native capture is unavailable', async () => {

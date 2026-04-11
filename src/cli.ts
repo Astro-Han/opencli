@@ -402,9 +402,9 @@ export function createProgram(BUILTIN_CLIS: string, USER_CLIS: string): Command 
     .action(browserAction(async (page, url) => {
       // Start session-level capture before navigation (catches initial requests)
       await startOperateCapture(page);
+      await installOperateFallbackCapture(page);
       await page.goto(url);
       await page.wait(2);
-      await installOperateFallbackCapture(page);
       console.log(`Navigated to: ${await page.getCurrentUrl?.() ?? url}`);
     }));
 
