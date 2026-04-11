@@ -1400,6 +1400,51 @@ describe('updatePlugin transactional staging', () => {
     });
   });
 
+  it('rejects monorepo updates whose manifest path escapes the repo root', () => {
+    const oldSubDir = path.join(monorepoRepoDir, 'packages', 'old-alpha');
+    fs.mkdirSync(oldSubDir, { recursive: true });
+    fs.writeFileSync(path.join(oldSubDir, 'old.js'), 'cli({ site: "old", name: "old" })');
+    fs.mkdirSync(PLUGINS_DIR, { recursive: true });
+    fs.symlinkSync(oldSubDir, monorepoLink, 'dir');
+
+    const lock = _readLockFile();
+    lock[monorepoPluginName] = {
+      source: {
+        kind: 'monorepo',
+        url: 'https://github.com/user/opencli-plugins-__test-transactional-mono-update__.git',
+        repoName: monorepoName,
+        subPath: 'packages/old-alpha',
+      },
+      commitHash: 'oldmonooldmonooldmonooldmonooldmonoold',
+      installedAt: '2025-01-01T00:00:00.000Z',
+    };
+    _writeLockFile(lock);
+
+    mockExecFileSync.mockImplementation((cmd, args) => {
+      if (cmd === 'git' && Array.isArray(args) && args[0] === 'clone') {
+        const cloneDir = String(args[4]);
+        fs.mkdirSync(cloneDir, { recursive: true });
+        fs.writeFileSync(path.join(cloneDir, 'opencli-plugin.json'), JSON.stringify({
+          plugins: {
+            [monorepoPluginName]: { path: '../outside-alpha' },
+          },
+        }));
+        return '';
+      }
+      if (cmd === 'git' && Array.isArray(args) && args[0] === 'rev-parse' && args[1] === 'HEAD') {
+        return '1234567890abcdef1234567890abcdef12345678\n';
+      }
+      return '';
+    });
+
+    expect(() => updatePlugin(monorepoPluginName)).toThrow('escapes repo root');
+    expect(fs.realpathSync(monorepoLink)).toBe(fs.realpathSync(oldSubDir));
+    expect(_readLockFile()[monorepoPluginName]?.source).toMatchObject({
+      kind: 'monorepo',
+      subPath: 'packages/old-alpha',
+    });
+  });
+
   it('rolls back the monorepo repo swap when relinking fails', () => {
     const oldSubDir = path.join(monorepoRepoDir, 'packages', 'old-alpha');
     fs.mkdirSync(oldSubDir, { recursive: true });

@@ -12,7 +12,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import chalk from 'chalk';
+import { styleText } from 'node:util';
 import { PKG_VERSION } from './version.js';
 
 const CACHE_DIR = path.join(os.homedir(), '.opencli');
@@ -76,8 +76,8 @@ export function registerUpdateNoticeOnExit(): void {
     if (!isNewer(_cache.latestVersion, PKG_VERSION)) return;
     try {
       process.stderr.write(
-        chalk.yellow(`\n  Update available: v${PKG_VERSION} → v${_cache.latestVersion}\n`) +
-        chalk.dim(`  Run: npm install -g @jackwener/opencli\n\n`),
+        styleText('yellow', `\n  Update available: v${PKG_VERSION} → v${_cache.latestVersion}\n`) +
+        styleText('dim', `  Run: npm install -g @jackwener/opencli\n\n`),
       );
     } catch {
       // Ignore broken pipe (stderr closed before process exits)

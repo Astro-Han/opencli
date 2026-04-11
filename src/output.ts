@@ -2,7 +2,7 @@
  * Output formatting: table, JSON, Markdown, CSV, YAML.
  */
 
-import chalk from 'chalk';
+import { styleText } from 'node:util';
 import Table from 'cli-table3';
 import yaml from 'js-yaml';
 
@@ -52,12 +52,12 @@ export function render(data: unknown, opts: RenderOptions = {}): void {
 
 function renderTable(data: unknown, opts: RenderOptions): void {
   const rows = normalizeRows(data);
-  if (!rows.length) { console.log(chalk.dim('(no data)')); return; }
+  if (!rows.length) { console.log(styleText('dim', '(no data)')); return; }
   const columns = resolveColumns(rows, opts);
 
   const header = columns.map(c => capitalize(c));
   const table = new Table({
-    head: header.map(h => chalk.bold(h)),
+    head: header.map(h => styleText('bold', h)),
     style: { head: [], border: [] },
     wordWrap: true,
     wrapOnWordBoundary: true,
@@ -71,14 +71,14 @@ function renderTable(data: unknown, opts: RenderOptions): void {
   }
 
   console.log();
-  if (opts.title) console.log(chalk.dim(`  ${opts.title}`));
+  if (opts.title) console.log(styleText('dim', `  ${opts.title}`));
   console.log(table.toString());
   const footer: string[] = [];
   footer.push(`${rows.length} items`);
   if (opts.elapsed) footer.push(`${opts.elapsed.toFixed(1)}s`);
   if (opts.source) footer.push(opts.source);
   if (opts.footerExtra) footer.push(opts.footerExtra);
-  console.log(chalk.dim(footer.join(' · ')));
+  console.log(styleText('dim', footer.join(' · ')));
 }
 
 function renderJson(data: unknown): void {

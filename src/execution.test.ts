@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { executeCommand } from './execution.js';
+import type { CliCommand } from './registry.js';
+import { executeCommand, prepareCommandArgs } from './execution.js';
 import { TimeoutError } from './errors.js';
 import { cli, Strategy } from './registry.js';
 import { withTimeoutMs } from './runtime.js';
@@ -106,5 +107,24 @@ describe('executeCommand — non-browser timeout', () => {
     expect(startNetworkCapture).toHaveBeenCalledTimes(1);
     expect(installInterceptor).toHaveBeenCalledWith('');
     expect(stopCapture).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not re-run custom validation when args are already prepared', async () => {
+    const validateArgs = vi.fn();
+    const cmd: CliCommand = {
+      site: 'test-execution',
+      name: 'prepared-validation',
+      description: 'test prepared validation path',
+      browser: false,
+      strategy: Strategy.PUBLIC,
+      args: [],
+      validateArgs,
+      func: async () => [],
+    };
+
+    const kwargs = prepareCommandArgs(cmd, {});
+    await executeCommand(cmd, kwargs, false, { prepared: true });
+
+    expect(validateArgs).toHaveBeenCalledTimes(1);
   });
 });

@@ -4,7 +4,7 @@
  * Simplified for the daemon-based architecture.
  */
 
-import chalk from 'chalk';
+import { styleText } from 'node:util';
 import { DEFAULT_DAEMON_PORT } from './constants.js';
 import { BrowserBridge } from './browser/index.js';
 import { getDaemonHealth, listSessions } from './browser/daemon-client.js';
@@ -138,12 +138,12 @@ export async function runBrowserDoctor(opts: DoctorOptions = {}): Promise<Doctor
 }
 
 export function renderBrowserDoctorReport(report: DoctorReport): string {
-  const lines = [chalk.bold(`opencli v${report.cliVersion ?? 'unknown'} doctor`) + chalk.dim(` (${getRuntimeLabel()})`), ''];
+  const lines = [styleText('bold', `opencli v${report.cliVersion ?? 'unknown'} doctor`) + styleText('dim', ` (${getRuntimeLabel()})`), ''];
 
   // Daemon status
   const daemonIcon = report.daemonFlaky
-    ? chalk.yellow('[WARN]')
-    : report.daemonRunning ? chalk.green('[OK]') : chalk.red('[MISSING]');
+    ? styleText('yellow', '[WARN]')
+    : report.daemonRunning ? styleText('green', '[OK]') : styleText('red', '[MISSING]');
   const daemonLabel = report.daemonFlaky
     ? 'unstable (running during live check, then stopped)'
     : report.daemonRunning ? `running on port ${DEFAULT_DAEMON_PORT}` : 'not running';
@@ -151,9 +151,9 @@ export function renderBrowserDoctorReport(report: DoctorReport): string {
 
   // Extension status
   const extIcon = report.extensionFlaky
-    ? chalk.yellow('[WARN]')
-    : report.extensionConnected ? chalk.green('[OK]') : chalk.yellow('[MISSING]');
-  const extVersion = report.extensionVersion ? chalk.dim(` (v${report.extensionVersion})`) : '';
+    ? styleText('yellow', '[WARN]')
+    : report.extensionConnected ? styleText('green', '[OK]') : styleText('yellow', '[MISSING]');
+  const extVersion = report.extensionVersion ? styleText('dim', ` (v${report.extensionVersion})`) : '';
   const extLabel = report.extensionFlaky
     ? 'unstable (connected during live check, then disconnected)'
     : report.extensionConnected ? 'connected' : 'not connected';
@@ -161,33 +161,33 @@ export function renderBrowserDoctorReport(report: DoctorReport): string {
 
   // Connectivity
   if (report.connectivity) {
-    const connIcon = report.connectivity.ok ? chalk.green('[OK]') : chalk.red('[FAIL]');
+    const connIcon = report.connectivity.ok ? styleText('green', '[OK]') : styleText('red', '[FAIL]');
     const detail = report.connectivity.ok
       ? `connected in ${(report.connectivity.durationMs / 1000).toFixed(1)}s`
       : `failed (${report.connectivity.error ?? 'unknown'})`;
     lines.push(`${connIcon} Connectivity: ${detail}`);
   } else {
-    lines.push(`${chalk.dim('[SKIP]')} Connectivity: skipped (--no-live)`);
+    lines.push(`${styleText('dim', '[SKIP]')} Connectivity: skipped (--no-live)`);
   }
 
   if (report.sessions) {
-    lines.push('', chalk.bold('Sessions:'));
+    lines.push('', styleText('bold', 'Sessions:'));
     if (report.sessions.length === 0) {
-      lines.push(chalk.dim('  • no active automation sessions'));
+      lines.push(styleText('dim', '  • no active automation sessions'));
     } else {
       for (const session of report.sessions) {
-        lines.push(chalk.dim(`  • ${session.workspace} → window ${session.windowId}, tabs=${session.tabCount}, idle=${Math.ceil(session.idleMsRemaining / 1000)}s`));
+        lines.push(styleText('dim', `  • ${session.workspace} → window ${session.windowId}, tabs=${session.tabCount}, idle=${Math.ceil(session.idleMsRemaining / 1000)}s`));
       }
     }
   }
 
   if (report.issues.length) {
-    lines.push('', chalk.yellow('Issues:'));
+    lines.push('', styleText('yellow', 'Issues:'));
     for (const issue of report.issues) {
-      lines.push(chalk.dim(`  • ${issue}`));
+      lines.push(styleText('dim', `  • ${issue}`));
     }
   } else if (report.daemonRunning && report.extensionConnected) {
-    lines.push('', chalk.green('Everything looks good!'));
+    lines.push('', styleText('green', 'Everything looks good!'));
   }
 
   return lines.join('\n');

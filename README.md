@@ -24,16 +24,16 @@ It also works as a **CLI hub** for local tools such as `gh`, `docker`, and other
 
 - **CLI All Electron** — CLI-ify apps like Antigravity Ultra! Now AI can control itself natively.
 - **Browser Automation** — `browser` gives AI agents direct browser control: click, type, extract, screenshot — any interaction, fully scriptable.
-- **Website → CLI** — Turn any website into a deterministic CLI: 70+ pre-built adapters, or crystallize your own with `opencli record`.
+- **Website → CLI** — Turn any website into a deterministic CLI: 87+ pre-built adapters, or crystallize your own with `opencli record`.
 - **Account-safe** — Reuses Chrome/Chromium logged-in state; your credentials never leave the browser.
 - **Anti-detection built-in** — Patches `navigator.webdriver`, stubs `window.chrome`, fakes plugin lists, cleans ChromeDriver/Playwright globals, and strips CDP frames from Error stack traces. Extensive anti-fingerprinting and risk-control evasion measures baked in at every layer.
 - **AI Agent ready** — `explore` discovers APIs, `synthesize` generates adapters, `cascade` finds auth strategies, `browser` controls the browser directly.
 - **External CLI Hub** — Discover, auto-install, and passthrough commands to any external CLI (gh, obsidian, docker, etc). Zero setup.
 - **Self-healing setup** — `opencli doctor` diagnoses and auto-starts the daemon, extension, and live browser connectivity.
-- **Dynamic Loader** — Simply drop `.ts` adapters into the `clis/` folder for auto-registration.
+- **Dynamic Loader** — Simply drop `.js` adapters into the `clis/` folder for auto-registration.
 - **Zero LLM cost** — No tokens consumed at runtime. Run 10,000 times and pay nothing.
 - **Deterministic** — Same command, same output schema, every time. Pipeable, scriptable, CI-friendly.
-- **Broad coverage** — 79+ sites across global and Chinese platforms (Bilibili, Zhihu, Xiaohongshu, Reddit, HackerNews, and more), plus desktop Electron apps via CDP.
+- **Broad coverage** — 87+ sites across global and Chinese platforms (Bilibili, Zhihu, Xiaohongshu, Reddit, HackerNews, and more), plus desktop Electron apps via CDP.
 
 ---
 
@@ -120,7 +120,7 @@ Use site-specific commands such as `opencli hackernews top` or `opencli reddit h
 Use these commands when the site you need is not covered yet:
 
 - `explore` inspects the page, network activity, and capability surface.
-- `synthesize` turns exploration artifacts into evaluate-based YAML adapters.
+- `synthesize` turns exploration artifacts into evaluate-based JS adapters.
 - `generate` runs the verified generation path and returns either a usable command or a structured explanation of why completion was blocked or needs human review.
 
 ### `cascade`: auth strategy discovery
@@ -136,7 +136,7 @@ OpenCLI is not only for websites. It can also:
 
 ## Prerequisites
 
-- **Node.js**: >= 20.0.0 (or **Bun** >= 1.0)
+- **Node.js**: >= 21.0.0 (or **Bun** >= 1.0)
 - **Chrome or Chromium** running and logged into the target site for browser-backed commands
 
 > **Important**: Browser-backed commands reuse your Chrome/Chromium login session. If you get empty data or permission-like failures, first confirm the site is already open and authenticated in Chrome/Chromium.
@@ -212,7 +212,7 @@ To load the source Browser Bridge extension:
 | **xiaoe** | `courses` `detail` `catalog` `play-url` `content` |
 | **quark** | `ls` `mkdir` `mv` `rename` `rm` `save` `share-tree` |
 
-79+ adapters in total — **[→ see all supported sites & commands](./docs/adapters/index.md)**
+87+ adapters in total — **[→ see all supported sites & commands](./docs/adapters/index.md)**
 
 ## CLI Hub
 
@@ -320,10 +320,10 @@ opencli plugin uninstall my-tool
 
 | Plugin | Type | Description |
 |--------|------|-------------|
-| [opencli-plugin-github-trending](https://github.com/ByteYue/opencli-plugin-github-trending) | TS | GitHub Trending repositories |
-| [opencli-plugin-hot-digest](https://github.com/ByteYue/opencli-plugin-hot-digest) | TS | Multi-platform trending aggregator |
-| [opencli-plugin-juejin](https://github.com/Astro-Han/opencli-plugin-juejin) | TS | 稀土掘金 (Juejin) hot articles |
-| [opencli-plugin-vk](https://github.com/flobo3/opencli-plugin-vk) | TS | VK (VKontakte) wall, feed, and search |
+| [opencli-plugin-github-trending](https://github.com/ByteYue/opencli-plugin-github-trending) | JS | GitHub Trending repositories |
+| [opencli-plugin-hot-digest](https://github.com/ByteYue/opencli-plugin-hot-digest) | JS | Multi-platform trending aggregator |
+| [opencli-plugin-juejin](https://github.com/Astro-Han/opencli-plugin-juejin) | JS | 稀土掘金 (Juejin) hot articles |
+| [opencli-plugin-vk](https://github.com/flobo3/opencli-plugin-vk) | JS | VK (VKontakte) wall, feed, and search |
 
 See [Plugins Guide](./docs/guide/plugins.md) for creating your own plugin.
 
@@ -335,7 +335,7 @@ See [Plugins Guide](./docs/guide/plugins.md) for creating your own plugin.
 
 ```bash
 opencli explore https://example.com --site mysite   # Discover APIs + capabilities
-opencli synthesize mysite                            # Generate TS adapters
+opencli synthesize mysite                            # Generate JS adapters
 opencli generate https://example.com --goal "hot"   # One-shot: explore → synthesize → register
 opencli cascade https://api.example.com/data         # Auto-probe: PUBLIC → COOKIE → HEADER
 ```
@@ -349,7 +349,7 @@ See **[TESTING.md](./TESTING.md)** for how to run and write tests.
 - **"Extension not connected"** — Ensure the Browser Bridge extension is installed and **enabled** in `chrome://extensions` in Chrome or Chromium.
 - **"attach failed: Cannot access a chrome-extension:// URL"** — Another extension may be interfering. Try disabling other extensions temporarily.
 - **Empty data or 'Unauthorized' error** — Your Chrome/Chromium login session may have expired. Navigate to the target site and log in again.
-- **Node API errors** — Ensure Node.js >= 20. Some dependencies require modern Node APIs.
+- **Node API errors** — Ensure Node.js >= 21. Some features require `node:util` styleText (stable in Node 21+).
 - **Daemon issues** — Check status: `curl localhost:19825/status` · View logs: `curl localhost:19825/logs`
 
 ## Star History

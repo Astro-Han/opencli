@@ -10,7 +10,7 @@
 
 OpenCLI 可以用同一套 CLI 做三类事情：
 
-- **直接使用现成适配器**：B站、知乎、小红书、Twitter/X、Reddit、HackerNews 等 [79+ 站点](#内置命令) 开箱即用。
+- **直接使用现成适配器**：B站、知乎、小红书、Twitter/X、Reddit、HackerNews 等 [87+ 站点](#内置命令) 开箱即用。
 - **直接驱动浏览器**：用 `opencli browser` 让 AI Agent 实时点击、输入、提取、截图、检查页面状态。
 - **把新网站生成成 CLI**：通过 `explore`、`synthesize`、`generate`、`cascade` 从真实页面行为推导出新的适配器。
 
@@ -23,7 +23,7 @@ OpenCLI 可以用同一套 CLI 做三类事情：
 - **输出稳定**：适配器命令返回固定结构，适合 shell、脚本、CI 和 AI Agent 工具调用。
 - **面向 AI Agent**：`browser` 负责实时操作，`explore` 负责探索接口，`synthesize` 负责生成适配器，`cascade` 负责探测认证路径。
 - **运行成本低**：已有命令运行时不消耗模型 token。
-- **天然可扩展**：既能用内置能力，也能注册本地 CLI，或直接往 `clis/` 丢 `.ts` 适配器。
+- **天然可扩展**：既能用内置能力，也能注册本地 CLI，或直接往 `clis/` 丢 `.js` 适配器。
 
 ## 快速开始
 
@@ -124,7 +124,7 @@ OpenCLI 不只是网站 CLI，还可以：
 
 ## 前置要求
 
-- **Node.js**: >= 20.0.0
+- **Node.js**: >= 21.0.0
 - 浏览器型命令需要 Chrome 或 Chromium 处于运行中，并已登录目标网站
 
 > **重要**：浏览器型命令直接复用你的 Chrome/Chromium 登录态。如果拿到空数据或出现权限类失败，先确认目标站点已经在浏览器里打开并完成登录。
@@ -262,7 +262,7 @@ npm link
 | **douyin** | `videos` `publish` `drafts` `draft` `delete` `stats` `profile` `update` `hashtag` `location` `activities` `collections` | 浏览器 |
 | **yuanbao** | `new` `ask` | 浏览器 |
 
-79+ 适配器 — **[→ 查看完整命令列表](./docs/adapters/index.md)**
+87+ 适配器 — **[→ 查看完整命令列表](./docs/adapters/index.md)**
 
 ### 外部 CLI 枢纽
 
@@ -407,7 +407,7 @@ esac
 
 ## 插件
 
-通过社区贡献的插件扩展 OpenCLI。插件使用与内置命令相同的 YAML/TS 格式，启动时自动发现。
+通过社区贡献的插件扩展 OpenCLI。插件使用与内置命令相同的 JS 格式，启动时自动发现。
 
 ```bash
 opencli plugin install github:user/opencli-plugin-my-tool  # 安装
@@ -421,9 +421,10 @@ opencli plugin uninstall my-tool                            # 卸载
 
 | 插件 | 类型 | 描述 |
 |------|------|------|
-| [opencli-plugin-github-trending](https://github.com/ByteYue/opencli-plugin-github-trending) | YAML | GitHub Trending 仓库 |
-| [opencli-plugin-hot-digest](https://github.com/ByteYue/opencli-plugin-hot-digest) | TS | 多平台热榜聚合 |
-| [opencli-plugin-juejin](https://github.com/Astro-Han/opencli-plugin-juejin) | YAML | 稀土掘金热门文章 |
+| [opencli-plugin-github-trending](https://github.com/ByteYue/opencli-plugin-github-trending) | JS | GitHub Trending 仓库 |
+| [opencli-plugin-hot-digest](https://github.com/ByteYue/opencli-plugin-hot-digest) | JS | 多平台热榜聚合 |
+| [opencli-plugin-juejin](https://github.com/Astro-Han/opencli-plugin-juejin) | JS | 稀土掘金热门文章 |
+| [opencli-plugin-vk](https://github.com/flobo3/opencli-plugin-vk) | JS | VK (VKontakte) 动态、信息流和搜索 |
 
 详见 [插件指南](./docs/zh/guide/plugins.md) 了解如何创建自己的插件。
 
@@ -460,7 +461,7 @@ opencli cascade https://api.example.com/data
 - **返回空数据，或者报错 "Unauthorized"**
   - Chrome/Chromium 里的登录态可能已经过期。请打开当前页面，在新标签页重新手工登录或刷新该页面。
 - **Node API 错误 (如 parseArgs, fs 等)**
-  - 确保 Node.js 版本 `>= 20`。
+  - 确保 Node.js 版本 `>= 21`（`node:util` 的 `styleText` 需要 Node 21+）。
 - **Daemon 问题**
   - 检查 daemon 状态：`curl localhost:19825/status`
   - 查看扩展日志：`curl localhost:19825/logs`
