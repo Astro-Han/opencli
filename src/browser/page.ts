@@ -213,6 +213,9 @@ export class Page extends BasePage {
     } catch (err) {
       if (!isUnsupportedCaptureError(err)) throw err;
       this._nativeCaptureSupported = false;
+      if (this._interceptorPattern !== undefined) {
+        return this.getInterceptedRequests().catch(() => []);
+      }
       return this.networkRequests(false);
     }
   }

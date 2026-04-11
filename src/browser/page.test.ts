@@ -157,6 +157,19 @@ describe('Page.consoleMessages', () => {
     expect(page.hasNativeCaptureSupport()).toBe(false);
   });
 
+  it('returns intercepted payloads from readNetworkCapture when native capture is unsupported and a fallback interceptor is installed', async () => {
+    sendCommandMock
+      .mockResolvedValueOnce({ ok: true })
+      .mockRejectedValueOnce(new Error('Unknown action: network-capture-read'))
+      .mockResolvedValueOnce([{ items: [{ id: 1 }] }]);
+
+    const page = new Page('site:test');
+
+    await page.installInterceptor('');
+    await expect(page.readNetworkCapture()).resolves.toEqual([{ items: [{ id: 1 }] }]);
+    expect(page.hasNativeCaptureSupport()).toBe(false);
+  });
+
   it('persists the resolved tab after navigation and clears it when the window closes', async () => {
     sendCommandFullMock.mockResolvedValueOnce({ data: { tabId: 99 } });
     sendCommandMock.mockResolvedValueOnce(null);
